@@ -1,0 +1,19 @@
+## Section 1
+### Accounts App
+The accounts app owns the User class and handles all user sign in/sign up processes. This app also handles the authentication of employee users or admin users and grants or denies access to the back office page.
+### Products App
+The products app owns all off the Products, as well as their respective Categories and Tags. The app also owns the product catalog, as well as the functions that make filtering or searching through the catalog possible. Also included in this app is the ability for employees to edit product details via the back office page.
+### Orders App
+The orders app owns everything involved in building a shopping cart of items and placing an order. This includes cart formation, adding and removing products from a cart, the checkout form, and the deep process of placing an order. This app also owns the order list and order status page which employees have access to.
+### Dashboard App
+The dashboard app owns no models and is responsible for the data analytics page which employees and admins can access. This app imports information from the orders app and uses `queries.py` to interact with the order data and display as useful business information.
+## Section 2
+An HTTP request first travels to the `config/urls.py` file, where it looks through the URL patterns for the empty path. In this case, there are three matches in the list, so the request will get passed to them in order. Neither `dashboard/urls.py` or `orders/urls.py` include the empty path, so the request reaches `products/urls.py`. Here, it sees the empty path specified in the URL pattern, and is passed along to the CatalogView in `products/views.py`. This view points to the `templates/products/catalog.html` template, which extends the `base.html` template.
+## Section 3
+The Cart model represents a customer's entire cart and underlying structure. It includes the creation of the cart, the ability to add items to the cart, keep track of products added to the cart and their quantities, as well as a total dollar amount for each line and the total number of items in the cart. Something new to me was the call to `models.OneToOneField()` which forces a one-to-one relationship between a customer and a cart. No customer may ever be associated with more than one cart at a time.
+## Section 4
+In this case, nothing would happen to a category's products because the deletion of a category will be refused. Thanks to the on_delete rule specified in `products/models.py:70` a category could only be deleted if there are no products associated with that category.
+## Section 5
+Instead of a single root-level tests.py file, the test suite for each app is contained within the app itself. Within an app, the tests are subdivided again into different files based on what part of the app each test suite is designed to test. The `conftest.py` file provides the set up required for us to run tests that involve our models. For example, with our TestCase method from previous weeks, if we have multiple tests that require an employee to be logged in, we would need to set the employee user up in every single test. The fixtures in `conftest.py` allow us to enter set up information once, and then pass that fixture to our test.
+## Section 6
+At first, I was not sure how the Cart badge in the navbar could display an up-to-date count of the number of items in the cart, especially since adding or removing items from the cart does not refresh the page. I asked Claude to explain the functionality to me, and its response helped me to follow the exact flow of the logic which spanned multiple files. I was able to open each file it referenced and wrap my mind around the code. I am still not 100% confident that I understand the functionality entirely, especially the HTML portion concerning the out of band swap, but I do feel more confident that I understand the basics of what is going on here.
