@@ -18,7 +18,12 @@
     </figure>
 
     <div>
-      <h1 class="text-4xl font-bold">{{ product.name }}</h1>
+      <div class="flex flex-wrap items-center gap-3">
+        <h1 class="text-4xl font-bold">{{ product.name }}</h1>
+        {% if product.is_featured %}
+          <span class="badge badge-accent">Featured</span>
+        {% endif %}
+      </div>
       {% if product.tagline %}
         <p class="mt-2 text-lg italic opacity-70">{{ product.tagline }}</p>
       {% endif %}

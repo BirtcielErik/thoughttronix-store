@@ -67,6 +67,9 @@
         <div class="card-body">
           <h2 class="card-title">
             <a href="{{ product.get_absolute_url }}" class="link-hover">{{ product.name }}</a>
+            {% if product.is_featured %}
+              <span class="badge badge-accent badge-sm">Featured</span>
+            {% endif %}
           </h2>
           <div class="flex flex-wrap gap-2">
             <span class="badge badge-outline">{{ product.category.name }}</span>
