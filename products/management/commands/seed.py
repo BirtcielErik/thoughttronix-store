@@ -21,6 +21,7 @@ from django.db import transaction
 from django.utils import timezone
 from django.utils.text import slugify
 
+from accounts.models import Address
 from orders.models import Cart, Order, OrderItem
 from products.models import Category, Product, Tag
 
@@ -496,6 +497,16 @@ SEED_ADDRESSES = [
 
 CARD_LAST4S = ["4242", "4111", "1881", "0005"]
 
+# The customer demo login's address book, so the checkout picker has
+# something to pick on a fresh database. The last one is deliberately
+# unlabeled — it shows the __str__ fallback to the street line.
+# (label, street, line2, city, state, zip, default shipping, default billing)
+CUSTOMER_ADDRESSES = [
+    ("Home", "12 Cortex Lane", "Unit 7", "Canyon", "TX", "79015", True, True),
+    ("Work", "1 Thought Plaza", "Floor 4", "Amarillo", "TX", "79101", False, False),
+    ("", "88 Reverie Road", "", "Santa Fe", "NM", "87501", False, False),
+]
+
 
 class Command(BaseCommand):
     help = "Wipe and rebuild the demo world: catalog, tags, and demo accounts."
@@ -506,6 +517,7 @@ class Command(BaseCommand):
         tags = self._create_tags()
         self._create_catalog(tags)
         self._create_users()
+        self._create_customer_addresses()
         self._create_customer_cart()
         self._create_orders()
 
@@ -515,6 +527,7 @@ class Command(BaseCommand):
                 f"{Tag.objects.count()} tags, "
                 f"{Product.objects.count()} products, "
                 f"{get_user_model().objects.count()} users, "
+                f"{Address.objects.count()} saved addresses, "
                 f"{Order.objects.count()} orders, "
                 f"and a live cart for 'customer'."
             )
@@ -579,6 +592,37 @@ class Command(BaseCommand):
             )
             user.set_unusable_password()
             user.save()
+
+    def _create_customer_addresses(self):
+        """The demo customer's address book.
+
+        Only the demo login gets one: background customers exist to feed
+        the dashboard's aggregates and never sign in, so a picker they
+        would never see is data for nobody.
+        """
+        customer = get_user_model().objects.get(username="customer")
+        for (
+            label,
+            street,
+            line2,
+            city,
+            state,
+            zip_code,
+            ship,
+            bill,
+        ) in CUSTOMER_ADDRESSES:
+            address = Address.objects.create(
+                user=customer,
+                label=label,
+                name=f"{customer.first_name} {customer.last_name}",
+                street=street,
+                line2=line2,
+                city=city,
+                state=state,
+                zip_code=zip_code,
+            )
+            if ship or bill:
+                address.apply_defaults(shipping=ship, billing=bill)
 
     def _create_customer_cart(self):
         customer = get_user_model().objects.get(username="customer")

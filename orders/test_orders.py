@@ -129,6 +129,98 @@ def test_an_invalid_checkout_preserves_input_and_places_nothing(
     assert CartItem.objects.exists()
 
 
+# --- The saved-address picker (HTMX) -----------------------------------------
+
+
+def test_checkout_offers_the_customers_saved_addresses(
+    client, customer, cart_item, address
+):
+    client.force_login(customer)
+
+    response = client.get(reverse("orders:checkout"))
+
+    page = response.content.decode()
+    assert "Use a saved address" in page
+    assert reverse("orders:checkout_address", kwargs={"slot": "shipping"}) in page
+    assert f'<option value="{address.pk}">Home</option>' in page
+
+
+def test_checkout_hides_the_picker_when_nothing_is_saved(client, customer, cart_item):
+    client.force_login(customer)
+
+    response = client.get(reverse("orders:checkout"))
+
+    assert "Use a saved address" not in response.content.decode()
+
+
+def test_checkout_prefills_from_the_default_addresses(
+    client, customer, cart_item, address
+):
+    address.apply_defaults(shipping=True, billing=False)
+    client.force_login(customer)
+
+    response = client.get(reverse("orders:checkout"))
+
+    initial = response.context["form"].initial
+    assert initial["shipping_street"] == "12 Cortex Lane"
+    assert "billing_street" not in initial  # no default billing address set
+
+
+def test_the_picker_returns_the_slot_fields_filled_in(client, customer, address):
+    client.force_login(customer)
+
+    response = client.get(
+        reverse("orders:checkout_address", kwargs={"slot": "billing"}),
+        {"saved_address": address.pk},
+    )
+
+    page = response.content.decode()
+    assert response.status_code == HTTPStatus.OK
+    assert 'id="billing-fields"' in page
+    assert 'name="billing_street"' in page
+    assert "12 Cortex Lane" in page
+    # Only the one section comes back — nothing else on the page is disturbed.
+    assert 'name="shipping_street"' not in page
+    assert 'name="card_number"' not in page
+
+
+def test_the_picker_rejects_an_unknown_slot(client, customer, address):
+    client.force_login(customer)
+
+    response = client.get(
+        reverse("orders:checkout_address", kwargs={"slot": "banana"}),
+        {"saved_address": address.pk},
+    )
+
+    assert response.status_code == HTTPStatus.NOT_FOUND
+
+
+@pytest.mark.parametrize("chosen", ["", "banana", None])
+def test_the_picker_rejects_a_missing_or_malformed_choice(client, customer, chosen):
+    """A blank or non-numeric pk must 404, not raise ValueError as a 500."""
+    client.force_login(customer)
+
+    response = client.get(
+        reverse("orders:checkout_address", kwargs={"slot": "shipping"}),
+        {} if chosen is None else {"saved_address": chosen},
+    )
+
+    assert response.status_code == HTTPStatus.NOT_FOUND
+
+
+def test_the_picker_cannot_reach_another_customers_address(
+    client, other_customer, address
+):
+    client.force_login(other_customer)
+
+    response = client.get(
+        reverse("orders:checkout_address", kwargs={"slot": "shipping"}),
+        {"saved_address": address.pk},
+    )
+
+    assert response.status_code == HTTPStatus.NOT_FOUND
+
+
 def test_confirmation_shows_the_order_number(client, customer, order):
     client.force_login(customer)
 

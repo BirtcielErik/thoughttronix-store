@@ -8,6 +8,7 @@ from decimal import Decimal
 
 import pytest
 
+from accounts.models import Address
 from products.models import Product
 
 from .models import CartItem, Order, OrderItem
@@ -128,3 +129,56 @@ def test_the_coupon_seam_is_accepted_and_ignored(cart, cart_item, checkout_data)
     order = place_order(cart, cart.user, checkout_data, coupon_code="THOUGHTS10")
 
     assert order.total == Decimal("699.98")
+
+
+# --- Saving addresses to the account -----------------------------------------
+
+
+def test_nothing_is_saved_unless_the_customer_asks(cart, cart_item, checkout_data):
+    place_order(cart, cart.user, checkout_data)
+
+    assert not Address.objects.exists()
+
+
+def test_a_ticked_box_saves_that_slot(cart, cart_item, checkout_data):
+    checkout_data["save_shipping_address"] = True
+
+    place_order(cart, cart.user, checkout_data)
+
+    saved = Address.objects.get()
+    assert saved.user == cart.user
+    assert saved.street == "12 Cortex Lane"
+    assert saved.zip_code == "79015"
+
+
+def test_both_slots_can_be_saved_at_once(cart, cart_item, checkout_data):
+    checkout_data["save_shipping_address"] = True
+    checkout_data["save_billing_address"] = True
+
+    place_order(cart, cart.user, checkout_data)
+
+    # Same street, different ZIP in the test data — two distinct addresses.
+    assert Address.objects.count() == 2
+
+
+def test_saving_an_address_already_on_file_does_not_duplicate_it(
+    cart, cart_item, checkout_data, address
+):
+    checkout_data["save_shipping_address"] = True
+
+    place_order(cart, cart.user, checkout_data)
+
+    assert Address.objects.count() == 1
+
+
+def test_deleting_a_saved_address_leaves_the_order_untouched(
+    cart, cart_item, checkout_data
+):
+    """The payoff of the snapshot design: no FK from Order to Address."""
+    checkout_data["save_shipping_address"] = True
+    order = place_order(cart, cart.user, checkout_data)
+
+    Address.objects.get().delete()
+
+    order.refresh_from_db()
+    assert order.shipping_street == "12 Cortex Lane"

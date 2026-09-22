@@ -1,0 +1,61 @@
+{% extends "base.html" %}
+
+{% block title %}Saved addresses — The ThoughtTronix Store{% endblock %}
+
+{% block content %}
+  <div class="flex flex-wrap items-center justify-between gap-4">
+    <div>
+      <h1 class="text-3xl font-bold">Saved addresses</h1>
+      <p class="mt-1 opacity-70">Reuse them at checkout instead of typing them again.</p>
+    </div>
+    {% if addresses %}
+      <a href="{% url 'accounts:address_create' %}" class="btn btn-primary btn-sm">
+        + Add address
+      </a>
+    {% endif %}
+  </div>
+
+  {% if addresses %}
+    <div class="mt-6 grid gap-4 sm:grid-cols-2">
+      {% for address in addresses %}
+        <div class="card bg-base-100 shadow-md">
+          <div class="card-body">
+            <div class="flex items-start justify-between gap-2">
+              <h2 class="card-title text-lg">{{ address }}</h2>
+              <div class="flex flex-col items-end gap-1">
+                {% if address.is_default_shipping %}
+                  <span class="badge badge-primary badge-sm">Default shipping</span>
+                {% endif %}
+                {% if address.is_default_billing %}
+                  <span class="badge badge-secondary badge-sm">Default billing</span>
+                {% endif %}
+              </div>
+            </div>
+            <address class="text-sm not-italic opacity-80">
+              {{ address.name }}<br />
+              {{ address.street }}{% if address.line2 %}<br />{{ address.line2 }}{% endif %}<br />
+              {{ address.city }}, {{ address.state }} {{ address.zip_code }}
+            </address>
+            <div class="card-actions mt-2 justify-end">
+              <a href="{% url 'accounts:address_update' address.pk %}"
+                 class="btn btn-ghost btn-xs">Edit</a>
+              <a href="{% url 'accounts:address_delete' address.pk %}"
+                 class="btn btn-ghost btn-xs text-error">Delete</a>
+            </div>
+          </div>
+        </div>
+      {% endfor %}
+    </div>
+  {% else %}
+    <div class="py-16 text-center">
+      <p class="text-5xl">📮</p>
+      <p class="mt-4 text-xl font-semibold">No addresses saved yet</p>
+      <p class="mt-2 opacity-70">
+        Save one here, or tick &ldquo;Save this address to my account&rdquo; at checkout.
+      </p>
+      <a href="{% url 'accounts:address_create' %}" class="btn btn-primary btn-sm mt-6">
+        Add your first address
+      </a>
+    </div>
+  {% endif %}
+{% endblock %}

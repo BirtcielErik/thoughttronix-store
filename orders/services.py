@@ -11,6 +11,8 @@ from typing import Any
 from django.contrib.auth.models import AbstractBaseUser
 from django.db import transaction
 
+from accounts.models import SLOTS, Address
+
 from .models import Cart, Order, OrderItem
 
 ADDRESS_FIELDS = [
@@ -46,6 +48,12 @@ def place_order(
     only the last four digits are stored; the full number and CVV never
     touch the database.
 
+    Either ``save_<slot>_address`` flag adds that slot to the customer's
+    address book, reusing an identical saved address rather than
+    duplicating it. Saving happens inside the same transaction as the
+    order, so a customer never ends up charged for an order they cannot
+    see because remembering an address failed.
+
     All-or-nothing: runs in a transaction, so a failure partway through
     leaves no partial order and the cart intact.
 
@@ -77,5 +85,8 @@ def place_order(
             unit_price=line.product.price,
             quantity=line.quantity,
         )
+    for slot in SLOTS:
+        if checkout_data.get(f"save_{slot}_address"):
+            Address.objects.remember(user, checkout_data, slot)
     cart.items.all().delete()
     return order

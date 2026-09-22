@@ -9,6 +9,7 @@ from decimal import Decimal
 import pytest
 from django.contrib.auth import get_user_model
 
+from accounts.models import Address
 from orders.models import Cart, CartItem
 from products.models import Category, Product, Tag
 
@@ -62,6 +63,21 @@ def unavailable_product(category):
 @pytest.fixture
 def tag(db):
     return Tag.objects.create(name="bestseller", slug="bestseller")
+
+
+@pytest.fixture
+def address(customer):
+    """A saved address matching the shipping half of the checkout test data."""
+    return Address.objects.create(
+        user=customer,
+        label="Home",
+        name="Casey Monroe",
+        street="12 Cortex Lane",
+        line2="Unit 7",
+        city="Canyon",
+        state="TX",
+        zip_code="79015",
+    )
 
 
 @pytest.fixture

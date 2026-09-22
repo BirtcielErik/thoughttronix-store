@@ -1,0 +1,25 @@
+{# Saved-address dropdown above one checkout address section. Choosing an #}
+{# address swaps that section's inputs in place, so nothing else on the #}
+{# page is lost. Renders nothing until the customer has saved something. #}
+{#                                                                       #}
+{# The chosen pk rides along as a query parameter: a select sends its    #}
+{# value that way, and HTMX cannot splice it into a URL path. The        #}
+{# placeholder is disabled so it can never be chosen back. #}
+{% if addresses %}
+  <div class="mb-3 flex flex-wrap items-center gap-2">
+    <label class="text-sm opacity-70" for="{{ slot }}-saved-address">
+      Use a saved address
+    </label>
+    <select id="{{ slot }}-saved-address"
+            name="saved_address"
+            class="select select-sm max-w-xs"
+            hx-get="{% url 'orders:checkout_address' slot=slot %}"
+            hx-target="#{{ slot }}-fields"
+            hx-swap="outerHTML">
+      <option value="" disabled selected>Choose one&hellip;</option>
+      {% for address in addresses %}
+        <option value="{{ address.pk }}">{{ address }}</option>
+      {% endfor %}
+    </select>
+  </div>
+{% endif %}

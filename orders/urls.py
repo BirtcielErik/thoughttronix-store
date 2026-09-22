@@ -23,6 +23,12 @@ urlpatterns = [
         name="remove",
     ),
     path("checkout/", views.CheckoutView.as_view(), name="checkout"),
+    # The chosen address rides in ?saved_address=; only the slot is routed.
+    path(
+        "checkout/address/<str:slot>/",
+        views.CheckoutAddressView.as_view(),
+        name="checkout_address",
+    ),
     path("orders/", views.OrderHistoryView.as_view(), name="history"),
     path("orders/<int:pk>/", views.OrderDetailView.as_view(), name="detail"),
     path(

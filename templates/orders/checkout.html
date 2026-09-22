@@ -24,22 +24,26 @@
       <section class="card bg-base-100 shadow-md">
         <div class="card-body">
           <h2 class="card-title">Shipping address</h2>
-          <div class="grid gap-4 sm:grid-cols-2">
-            {% for field in form.shipping_fields %}
-              {% include "orders/partials/_field.html" %}
-            {% endfor %}
-          </div>
+          {% include "orders/partials/_address_picker.html" with slot="shipping" %}
+          {% include "orders/partials/_address_fields.html" with slot="shipping" fields=form.shipping_fields %}
+          <label class="label mt-2 cursor-pointer justify-start gap-3"
+                 for="{{ form.save_shipping_address.id_for_label }}">
+            {{ form.save_shipping_address }}
+            <span class="text-sm">{{ form.save_shipping_address.label }}</span>
+          </label>
         </div>
       </section>
 
       <section class="card bg-base-100 shadow-md">
         <div class="card-body">
           <h2 class="card-title">Billing address</h2>
-          <div class="grid gap-4 sm:grid-cols-2">
-            {% for field in form.billing_fields %}
-              {% include "orders/partials/_field.html" %}
-            {% endfor %}
-          </div>
+          {% include "orders/partials/_address_picker.html" with slot="billing" %}
+          {% include "orders/partials/_address_fields.html" with slot="billing" fields=form.billing_fields %}
+          <label class="label mt-2 cursor-pointer justify-start gap-3"
+                 for="{{ form.save_billing_address.id_for_label }}">
+            {{ form.save_billing_address }}
+            <span class="text-sm">{{ form.save_billing_address.label }}</span>
+          </label>
         </div>
       </section>
 

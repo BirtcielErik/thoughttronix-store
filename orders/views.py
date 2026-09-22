@@ -9,12 +9,14 @@ validate the form, hand everything to ``place_order``.
 
 from django.contrib import messages
 from django.contrib.auth.mixins import LoginRequiredMixin
+from django.http import Http404
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.views import View
 from django.views.generic import DetailView, FormView, ListView, TemplateView
 
 from accounts.mixins import StaffRequiredMixin
+from accounts.models import SLOTS, Address
 from products.models import Product
 
 from .forms import CheckoutForm, OrderStatusForm
@@ -116,9 +118,21 @@ class CheckoutView(LoginRequiredMixin, FormView):
             return redirect("orders:cart")
         return super().dispatch(request, *args, **kwargs)
 
+    def get_initial(self):
+        """Seed each slot from the customer's default address, if they set one."""
+        initial = super().get_initial()
+        for slot in SLOTS:
+            default = self.request.user.addresses.filter(
+                **{f"is_default_{slot}": True}
+            ).first()
+            if default:
+                initial.update(default.as_initial(slot))
+        return initial
+
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
         context["cart"] = Cart.for_user(self.request.user)
+        context["addresses"] = self.request.user.addresses.all()
         return context
 
     def form_valid(self, form):
@@ -126,6 +140,36 @@ class CheckoutView(LoginRequiredMixin, FormView):
         order = place_order(cart, self.request.user, form.cleaned_data)
         messages.success(self.request, f"Order {order.number} placed. Thank you!")
         return redirect(reverse("orders:confirmation", kwargs={"pk": order.pk}))
+
+
+class CheckoutAddressView(LoginRequiredMixin, View):
+    """HTMX: re-render one checkout address section from a saved address.
+
+    Returns only the six inputs of the named slot, so picking an address
+    leaves the rest of the page — including anything already typed into
+    the card fields — untouched.
+
+    The slot is routed (which section to render); the address arrives as
+    ``?saved_address=`` because that is how the dropdown sends its value.
+    """
+
+    def get(self, request, slot):
+        if slot not in SLOTS:
+            raise Http404("No such address section.")
+        # Validated before the lookup: a blank or non-numeric pk makes the
+        # queryset raise ValueError, which would be a 500 rather than a 404.
+        pk = request.GET.get("saved_address", "")
+        if not pk.isdigit():
+            raise Http404("No saved address chosen.")
+        # Through the owner, never by bare pk: without this filter the URL
+        # would hand out any customer's home address.
+        address = get_object_or_404(Address, pk=pk, user=request.user)
+        form = CheckoutForm(initial=address.as_initial(slot))
+        return render(
+            request,
+            "orders/partials/_address_fields.html",
+            {"fields": getattr(form, f"{slot}_fields")(), "slot": slot},
+        )
 
 
 class OwnOrdersMixin(LoginRequiredMixin):

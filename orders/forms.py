@@ -5,71 +5,20 @@ annotations: field types validate (``EmailField``), field arguments
 validate (``required``, ``max_length``, ``ChoiceField``), and the
 ``validators=[...]`` list carries the rest. No ``clean_*`` methods
 and no ``clean()`` — none of its current rules need imperative validation.
+
+The postal vocabulary (``US_STATES``, ``zip_validator``) lives in
+``accounts``, beside the ``Address`` model that also stores it. Checkout
+is one of two places with an address on it, not the owner of the concept.
 """
 
 from django import forms
 from django.core.validators import RegexValidator
 
+from accounts.models import US_STATES, zip_validator
+
 from .models import Order
 from .validators import validate_card_number, validate_expiry
 
-US_STATES = [
-    ("AL", "Alabama"),
-    ("AK", "Alaska"),
-    ("AZ", "Arizona"),
-    ("AR", "Arkansas"),
-    ("CA", "California"),
-    ("CO", "Colorado"),
-    ("CT", "Connecticut"),
-    ("DE", "Delaware"),
-    ("DC", "District of Columbia"),
-    ("FL", "Florida"),
-    ("GA", "Georgia"),
-    ("HI", "Hawaii"),
-    ("ID", "Idaho"),
-    ("IL", "Illinois"),
-    ("IN", "Indiana"),
-    ("IA", "Iowa"),
-    ("KS", "Kansas"),
-    ("KY", "Kentucky"),
-    ("LA", "Louisiana"),
-    ("ME", "Maine"),
-    ("MD", "Maryland"),
-    ("MA", "Massachusetts"),
-    ("MI", "Michigan"),
-    ("MN", "Minnesota"),
-    ("MS", "Mississippi"),
-    ("MO", "Missouri"),
-    ("MT", "Montana"),
-    ("NE", "Nebraska"),
-    ("NV", "Nevada"),
-    ("NH", "New Hampshire"),
-    ("NJ", "New Jersey"),
-    ("NM", "New Mexico"),
-    ("NY", "New York"),
-    ("NC", "North Carolina"),
-    ("ND", "North Dakota"),
-    ("OH", "Ohio"),
-    ("OK", "Oklahoma"),
-    ("OR", "Oregon"),
-    ("PA", "Pennsylvania"),
-    ("RI", "Rhode Island"),
-    ("SC", "South Carolina"),
-    ("SD", "South Dakota"),
-    ("TN", "Tennessee"),
-    ("TX", "Texas"),
-    ("UT", "Utah"),
-    ("VT", "Vermont"),
-    ("VA", "Virginia"),
-    ("WA", "Washington"),
-    ("WV", "West Virginia"),
-    ("WI", "Wisconsin"),
-    ("WY", "Wyoming"),
-]
-
-zip_validator = RegexValidator(
-    r"^\d{5}(-\d{4})?$", "Enter a ZIP code like 79016 or 79016-1234."
-)
 cvv_validator = RegexValidator(r"^\d{3,4}$", "Enter the 3- or 4-digit CVV.")
 
 
@@ -88,6 +37,9 @@ class CheckoutForm(forms.Form):
     shipping_zip = forms.CharField(
         label="ZIP code", max_length=10, validators=[zip_validator]
     )
+    save_shipping_address = forms.BooleanField(
+        label="Save this address to my account", required=False
+    )
 
     billing_name = forms.CharField(label="Full name", max_length=100)
     billing_street = forms.CharField(label="Street address", max_length=200)
@@ -98,6 +50,9 @@ class CheckoutForm(forms.Form):
     billing_state = forms.ChoiceField(label="State", choices=US_STATES)
     billing_zip = forms.CharField(
         label="ZIP code", max_length=10, validators=[zip_validator]
+    )
+    save_billing_address = forms.BooleanField(
+        label="Save this address to my account", required=False
     )
 
     card_number = forms.CharField(
@@ -112,12 +67,17 @@ class CheckoutForm(forms.Form):
         super().__init__(*args, **kwargs)
         for field in self.fields.values():
             widget = field.widget
-            if isinstance(widget, forms.Select):
+            if isinstance(widget, forms.CheckboxInput):
+                widget.attrs["class"] = "toggle toggle-primary toggle-sm"
+            elif isinstance(widget, forms.Select):
                 widget.attrs["class"] = "select w-full"
             else:
                 widget.attrs["class"] = "input w-full"
 
     # Field groups for the template — the form owns its own structure.
+    # The ``save_*`` checkboxes sit outside these groups deliberately:
+    # the groups are what the HTMX address picker swaps, and a swap must
+    # not reset a checkbox the customer already ticked.
 
     def shipping_fields(self):
         return [self[name] for name in self.fields if name.startswith("shipping_")]
