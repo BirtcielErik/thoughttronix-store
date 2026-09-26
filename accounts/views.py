@@ -59,6 +59,9 @@ class AddressListView(OwnAddressesMixin, ListView):
     template_name = "accounts/address_list.html"
     context_object_name = "addresses"
 
+    def get_queryset(self):
+        return super().get_queryset().order_by("label")
+
 
 class AddressFormMixin(OwnAddressesMixin, SuccessMessageMixin):
     """Shared plumbing for adding and editing an address."""
