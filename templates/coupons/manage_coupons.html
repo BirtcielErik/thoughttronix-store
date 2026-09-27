@@ -1,0 +1,66 @@
+{% extends "backoffice/base.html" %}
+{% load humanize %}
+
+{% block title %}Coupons — Back office{% endblock %}
+
+{% block backoffice %}
+  <div class="mb-4 flex flex-wrap items-center justify-between gap-4">
+    <h2 class="text-xl font-semibold">
+      {{ coupons|length }} coupon{{ coupons|length|pluralize }}
+    </h2>
+    <a href="{% url 'coupons:manage_coupon_create' %}" class="btn btn-primary btn-sm">
+      + Add coupon
+    </a>
+  </div>
+
+  {% if coupons %}
+    <div class="overflow-x-auto rounded-box bg-base-100 shadow-md">
+      <table class="table">
+        <thead>
+          <tr>
+            <th>Code</th>
+            <th>Offer</th>
+            <th>Dates</th>
+            <th>Status</th>
+            <th class="text-right">Uses</th>
+            <th class="text-right">Total discounted</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for coupon in coupons %}
+            <tr>
+              <td>
+                <a href="{% url 'coupons:manage_coupon_detail' coupon.pk %}"
+                   class="link-hover font-mono font-semibold">{{ coupon.code }}</a>
+                {% if coupon.description %}
+                  <p class="text-xs italic opacity-60">{{ coupon.description }}</p>
+                {% endif %}
+              </td>
+              <td>
+                {{ coupon.summary }}
+                {% if coupon.min_spend %}
+                  <p class="text-xs opacity-60">on orders of ${{ coupon.min_spend|intcomma }}+</p>
+                {% endif %}
+              </td>
+              <td class="whitespace-nowrap text-sm">
+                {% include "coupons/partials/_dates.html" %}
+              </td>
+              <td>{% include "coupons/partials/_status_badge.html" %}</td>
+              <td class="text-right">{{ coupon.uses }}</td>
+              <td class="text-right font-semibold">${{ coupon.discounted|floatformat:2|intcomma }}</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  {% else %}
+    <div class="py-16 text-center">
+      <p class="text-5xl">🎟️</p>
+      <p class="mt-4 text-xl font-semibold">No coupons yet</p>
+      <p class="mt-2 opacity-70">Full price, all the time. Bold, but perhaps unkind.</p>
+      <a href="{% url 'coupons:manage_coupon_create' %}" class="btn btn-primary btn-sm mt-6">
+        Create the first code
+      </a>
+    </div>
+  {% endif %}
+{% endblock %}

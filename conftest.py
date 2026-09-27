@@ -10,6 +10,7 @@ import pytest
 from django.contrib.auth import get_user_model
 
 from accounts.models import Address
+from coupons.models import Coupon
 from orders.models import Cart, CartItem
 from products.models import Category, Product, Tag
 
@@ -88,3 +89,22 @@ def cart(customer):
 @pytest.fixture
 def cart_item(cart, product):
     return CartItem.objects.create(cart=cart, product=product, quantity=2)
+
+
+@pytest.fixture
+def order_coupon(db):
+    """15% off the whole order, no dates, no minimum."""
+    return Coupon.objects.create(
+        code="THOUGHTS15", kind=Coupon.Kind.PERCENT, value=Decimal("15")
+    )
+
+
+@pytest.fixture
+def item_coupon(product):
+    """$25 off the Seraphine Home Hub line."""
+    return Coupon.objects.create(
+        code="SERAPHINE25",
+        kind=Coupon.Kind.AMOUNT,
+        value=Decimal("25.00"),
+        product=product,
+    )

@@ -44,6 +44,7 @@ INSTALLED_APPS = [
     "accounts",
     "products",
     "orders",
+    "coupons",
     "dashboard",
 ]
 
@@ -121,7 +122,9 @@ AUTH_PASSWORD_VALIDATORS = [
 
 LANGUAGE_CODE = "en-us"
 
-TIME_ZONE = "UTC"
+# The store's local time: "today" for coupon dates and the dashboard's
+# day buckets. Timestamps are still stored in UTC (USE_TZ).
+TIME_ZONE = env.str("TIME_ZONE", default="America/Chicago")
 
 USE_I18N = True
 

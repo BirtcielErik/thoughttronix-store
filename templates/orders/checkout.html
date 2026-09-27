@@ -13,6 +13,11 @@
       {% for error in form.non_field_errors %}
         <div class="alert alert-error" role="alert"><span>{{ error }}</span></div>
       {% endfor %}
+      {% for error in form.coupon_code.errors %}
+        <div class="alert alert-error" role="alert">
+          <span>{{ error }} Nothing was charged — remove the code or try another.</span>
+        </div>
+      {% endfor %}
 
       <section class="card bg-base-100 shadow-md">
         <div class="card-body">
@@ -59,33 +64,17 @@
         </div>
       </section>
 
+      {# Only a code the summary has applied rides along; see _order_summary. #}
+      <input type="hidden" id="applied-coupon" name="coupon_code" value="{{ applied_code }}">
+
       <button type="submit" class="btn btn-primary w-full">
-        Place order — ${{ cart.total|intcomma }}
+        Place order — <span id="place-order-total">${{ summary_total|intcomma }}</span>
       </button>
     </form>
 
-    <aside>
-      <div class="card bg-base-100 shadow-md">
-        <div class="card-body">
-          <h2 class="card-title">Your order</h2>
-          <ul class="space-y-2">
-            {% for item in cart.lines %}
-              <li class="flex justify-between gap-4 text-sm">
-                <span>{{ item.quantity }} × {{ item.product.name }}</span>
-                <span class="whitespace-nowrap">${{ item.line_total|intcomma }}</span>
-              </li>
-            {% endfor %}
-          </ul>
-          <div class="divider my-2"></div>
-          <p class="flex justify-between font-semibold">
-            <span>Total</span>
-            <span class="text-primary">${{ cart.total|intcomma }}</span>
-          </p>
-          <a href="{% url 'orders:cart' %}" class="link link-hover text-sm opacity-70">
-            Edit cart
-          </a>
-        </div>
-      </div>
+    {# First on phones, so the coupon box comes before the Place order button. #}
+    <aside class="order-first lg:order-last">
+      {% include "orders/partials/_order_summary.html" %}
     </aside>
   </div>
 {% endblock %}

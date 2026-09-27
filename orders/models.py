@@ -119,6 +119,22 @@ class Order(models.Model):
 
     card_last4 = models.CharField(max_length=4)
 
+    # The coupon, snapshotted like everything else: ``discount`` is what it
+    # took off and ``coupon_code`` the code as applied, so history reads
+    # the same even if the coupon's schedule changes later. The FK is for
+    # linking; coupons are never deleted, and PROTECT keeps it that way.
+    discount = models.DecimalField(
+        max_digits=10, decimal_places=2, default=Decimal("0.00")
+    )
+    coupon = models.ForeignKey(
+        "coupons.Coupon",
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="orders",
+    )
+    coupon_code = models.CharField(max_length=30, blank=True)
+
     # default (not auto_now_add) so the seed can backdate orders.
     created_at = models.DateTimeField(default=timezone.now)
 
@@ -132,6 +148,15 @@ class Order(models.Model):
     def number(self):
         """The customer-facing order number, e.g. ``TT-2026-00042``."""
         return f"TT-{self.created_at.year}-{self.pk:05d}"
+
+    @property
+    def subtotal(self):
+        """The lines at purchase-time prices, before the coupon.
+
+        Derived rather than stored: ``total`` is what the card was charged,
+        so ``total = subtotal − discount`` holds by construction.
+        """
+        return self.total + self.discount
 
 
 class OrderItem(models.Model):
@@ -147,6 +172,12 @@ class OrderItem(models.Model):
     product_name = models.CharField(max_length=200)
     unit_price = models.DecimalField(max_digits=10, decimal_places=2)
     quantity = models.PositiveIntegerField()
+    # An item coupon's discount, on the line it targeted (the same amount
+    # as ``Order.discount``). Order-wide discounts stay on the order and
+    # are not spread across lines.
+    discount = models.DecimalField(
+        max_digits=10, decimal_places=2, default=Decimal("0.00")
+    )
 
     class Meta:
         ordering = ["pk"]
@@ -156,4 +187,10 @@ class OrderItem(models.Model):
 
     @property
     def line_total(self):
+        """The line at purchase-time prices, before any item coupon."""
         return self.unit_price * self.quantity
+
+    @property
+    def charged_total(self):
+        """The line after its item coupon, if any."""
+        return self.line_total - self.discount

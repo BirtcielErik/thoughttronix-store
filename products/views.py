@@ -1,6 +1,7 @@
+from django.contrib import messages
 from django.contrib.messages.views import SuccessMessageMixin
-from django.db.models import Count
-from django.shortcuts import get_object_or_404
+from django.db.models import Count, ProtectedError
+from django.shortcuts import get_object_or_404, redirect
 from django.urls import reverse_lazy
 from django.views.generic import (
     CreateView,
@@ -114,6 +115,20 @@ class ManageProductDeleteView(StaffRequiredMixin, SuccessMessageMixin, DeleteVie
     success_url = reverse_lazy("products:manage_products")
     success_message = "Product deleted."
     extra_context = {"section": "products"}
+
+    def form_valid(self, form):
+        # A coupon aimed at this product protects it: coupons keep their
+        # history, so the product can be marked unavailable instead.
+        try:
+            return super().form_valid(form)
+        except ProtectedError:
+            codes = ", ".join(coupon.code for coupon in self.object.coupons.all())
+            messages.error(
+                self.request,
+                f"“{self.object.name}” can't be deleted: coupon {codes} targets it. "
+                "Mark it unavailable instead.",
+            )
+            return redirect("products:manage_product_update", pk=self.object.pk)
 
 
 class ManageCatalogView(StaffRequiredMixin, TemplateView):

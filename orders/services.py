@@ -12,6 +12,7 @@ from django.contrib.auth.models import AbstractBaseUser
 from django.db import transaction
 
 from accounts.models import SLOTS, Address
+from coupons.models import Coupon
 
 from .models import Cart, Order, OrderItem
 
@@ -42,6 +43,13 @@ def place_order(
 ) -> Order:
     """Create an order from the cart's contents, then empty the cart.
 
+    ``coupon_code``, if given, is looked up and checked by
+    ``Coupon.discount_for`` (the same rules the checkout preview and form
+    use), inside this transaction, as the final authority. ``Order.total``
+    is what the card is charged, after the discount; the order keeps the
+    discount, the coupon, and the code as snapshots. An item coupon's
+    discount is also recorded on the line it targeted.
+
     ``checkout_data`` is the ``cleaned_data`` of a valid ``CheckoutForm``.
     Addresses and line prices are denormalized onto the order — an order
     is a snapshot, immune to later catalog or address edits. Of the card,
@@ -58,7 +66,8 @@ def place_order(
     leaves no partial order and the cart intact.
 
     Raises ``ValueError`` if the cart is empty or holds a product that is
-    no longer available.
+    no longer available, and its subclass ``CouponError`` if the coupon
+    can't be applied (the message is written for the customer).
     """
     lines = list(cart.lines())
     if not lines:
@@ -70,20 +79,29 @@ def place_order(
             "Remove them from the cart to check out."
         )
 
+    discount = None
+    if coupon_code and coupon_code.strip():
+        discount = Coupon.objects.lookup(coupon_code).discount_for(cart, user)
+
     card_digits = checkout_data["card_number"].replace(" ", "").replace("-", "")
     order = Order.objects.create(
         user=user,
-        total=cart.total(),
+        total=cart.total() - (discount.amount if discount else 0),
+        discount=discount.amount if discount else 0,
+        coupon=discount.coupon if discount else None,
+        coupon_code=discount.coupon.code if discount else "",
         card_last4=card_digits[-4:],
         **{name: checkout_data[name] for name in ADDRESS_FIELDS},
     )
     for line in lines:
+        on_this_line = discount is not None and discount.product_id == line.product_id
         OrderItem.objects.create(
             order=order,
             product=line.product,
             product_name=line.product.name,
             unit_price=line.product.price,
             quantity=line.quantity,
+            discount=discount.amount if on_this_line else 0,
         )
     for slot in SLOTS:
         if checkout_data.get(f"save_{slot}_address"):

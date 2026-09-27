@@ -1,0 +1,87 @@
+{# The checkout's order summary: lines, the coupon box, and the totals. #}
+{#                                                                       #}
+{# The coupon box is its own small form, outside the checkout form (forms #}
+{# can't nest), so pressing Enter in it previews the code instead of     #}
+{# placing the order. With oob=True (the HTMX preview) the response also #}
+{# swaps, out of band, the hidden coupon_code input inside the checkout  #}
+{# form and the total on the Place order button: the code submitted is   #}
+{# always the one the customer saw applied.                              #}
+{% load humanize %}
+<div id="order-summary" class="card bg-base-100 shadow-md">
+  <div class="card-body">
+    <h2 class="card-title">Your order</h2>
+    <ul class="space-y-2">
+      {% for item in cart.lines %}
+        <li class="text-sm">
+          <div class="flex justify-between gap-4">
+            <span>{{ item.quantity }} × {{ item.product.name }}</span>
+            <span class="whitespace-nowrap">${{ item.line_total|intcomma }}</span>
+          </div>
+          {% if discount.product and discount.product_id == item.product_id %}
+            <div class="flex justify-between gap-4 text-success">
+              <span class="pl-4">{{ discount.coupon.code }}</span>
+              <span class="whitespace-nowrap">−${{ discount.amount|intcomma }}</span>
+            </div>
+          {% endif %}
+        </li>
+      {% endfor %}
+    </ul>
+
+    <div class="divider my-2"></div>
+
+    <form hx-get="{% url 'orders:checkout_coupon' %}"
+          hx-target="#order-summary"
+          hx-swap="outerHTML"
+          class="flex gap-2">
+      <label for="coupon-code" class="sr-only">Coupon code</label>
+      <input id="coupon-code"
+             name="coupon_code"
+             type="text"
+             value="{{ coupon_code }}"
+             placeholder="Coupon code"
+             autocomplete="off"
+             class="input input-sm w-full uppercase">
+      <button type="submit" class="btn btn-outline btn-sm">Apply</button>
+    </form>
+    {% if coupon_error %}
+      <p class="text-sm text-error">{{ coupon_error }}</p>
+    {% elif discount %}
+      <div class="flex items-center justify-between gap-4 text-sm text-success">
+        <span>{{ discount.coupon.summary }}</span>
+        <button type="button"
+                class="link link-hover text-xs opacity-70"
+                hx-get="{% url 'orders:checkout_coupon' %}"
+                hx-target="#order-summary"
+                hx-swap="outerHTML">Remove</button>
+      </div>
+    {% endif %}
+
+    <div class="divider my-2"></div>
+
+    {% if discount %}
+      <p class="flex justify-between text-sm">
+        <span>Subtotal</span>
+        <span>${{ subtotal|intcomma }}</span>
+      </p>
+      {% if not discount.product %}
+        <p class="flex justify-between text-sm text-success">
+          <span>{{ discount.coupon.code }}</span>
+          <span>−${{ discount.amount|intcomma }}</span>
+        </p>
+      {% endif %}
+    {% endif %}
+    <p class="flex justify-between font-semibold">
+      <span>Total</span>
+      <span class="text-primary">${{ summary_total|intcomma }}</span>
+    </p>
+    <a href="{% url 'orders:cart' %}" class="link link-hover text-sm opacity-70">
+      Edit cart
+    </a>
+  </div>
+</div>
+
+{% if oob %}
+  <input type="hidden" id="applied-coupon" name="coupon_code"
+         value="{{ applied_code }}" hx-swap-oob="true">
+  <span id="place-order-total" hx-swap-oob="true">${{ summary_total|intcomma }}</span>
+{% endif %}

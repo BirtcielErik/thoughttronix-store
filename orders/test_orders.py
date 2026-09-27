@@ -1,6 +1,7 @@
 """Order model behavior, the checkout flow, and owner-only access."""
 
 import datetime
+import re
 from decimal import Decimal
 from http import HTTPStatus
 
@@ -8,6 +9,8 @@ import pytest
 from django.contrib.auth import get_user_model
 from django.urls import reverse
 from django.utils import timezone
+
+from coupons.models import CouponError
 
 from .models import CartItem, Order
 from .services import place_order
@@ -127,6 +130,123 @@ def test_an_invalid_checkout_preserves_input_and_places_nothing(
     assert "12 Cortex Lane" in page  # everything typed is preserved
     assert not Order.objects.exists()
     assert CartItem.objects.exists()
+
+
+# --- Coupons at checkout ------------------------------------------------------
+
+
+def preview(client, code):
+    return client.get(reverse("orders:checkout_coupon"), {"coupon_code": code})
+
+
+def applied_code(page):
+    """The value of the checkout form's hidden coupon input in ``page``."""
+    return re.search(r'id="applied-coupon"[^>]*value="([^"]*)"', page).group(1)
+
+
+def test_the_coupon_preview_requires_login(client, db):
+    response = preview(client, "THOUGHTS15")
+
+    assert response.status_code == HTTPStatus.FOUND
+    assert reverse("accounts:login") in response.url
+
+
+def test_previewing_a_code_shows_the_discounted_total(
+    client, customer, cart_item, order_coupon
+):
+    client.force_login(customer)
+
+    response = preview(client, "thoughts15")
+
+    page = response.content.decode()
+    assert "<html" not in page  # a partial, never base.html
+    assert "−$105.00" in page
+    assert "594.98" in page
+    # Out of band: the checkout form's hidden input now carries the code.
+    assert applied_code(page) == "THOUGHTS15"
+
+
+def test_previewing_a_bad_code_explains_and_applies_nothing(
+    client, customer, cart_item, order_coupon
+):
+    order_coupon.is_active = False
+    order_coupon.save()
+    client.force_login(customer)
+
+    page = preview(client, "THOUGHTS15").content.decode()
+
+    assert "THOUGHTS15 is no longer valid." in page
+    assert applied_code(page) == ""  # nothing rides into the checkout form
+    assert "699.98" in page
+
+
+def test_checkout_with_a_code_places_a_discounted_order(
+    client, customer, cart_item, item_coupon
+):
+    client.force_login(customer)
+
+    client.post(
+        reverse("orders:checkout"), {**VALID_DATA, "coupon_code": "SERAPHINE25"}
+    )
+
+    order = Order.objects.get()
+    assert order.discount == Decimal("25.00")
+    assert order.total == Decimal("674.98")
+    assert order.coupon_code == "SERAPHINE25"
+
+
+def test_checkout_with_a_bad_code_places_nothing_and_keeps_input(
+    client, customer, cart_item, order_coupon
+):
+    order_coupon.ends_on = timezone.localdate() - datetime.timedelta(days=1)
+    order_coupon.save()
+    client.force_login(customer)
+
+    response = client.post(
+        reverse("orders:checkout"), {**VALID_DATA, "coupon_code": "THOUGHTS15"}
+    )
+
+    page = response.content.decode()
+    assert "THOUGHTS15 expired on" in page
+    assert "Nothing was charged" in page
+    assert "12 Cortex Lane" in page
+    assert not Order.objects.exists()
+
+
+def test_a_code_that_fails_inside_the_transaction_is_caught(
+    client, customer, cart_item, order_coupon, monkeypatch
+):
+    """The race: valid when the form checked it, gone by place_order."""
+
+    def expired_meanwhile(*args, **kwargs):
+        raise CouponError("THOUGHTS15 is no longer valid.")
+
+    monkeypatch.setattr("orders.views.place_order", expired_meanwhile)
+    client.force_login(customer)
+
+    response = client.post(
+        reverse("orders:checkout"), {**VALID_DATA, "coupon_code": "THOUGHTS15"}
+    )
+
+    assert response.status_code == HTTPStatus.OK
+    assert "no longer valid. Nothing was charged" in response.content.decode()
+    assert CartItem.objects.exists()
+
+
+def test_the_receipt_shows_the_discount(
+    client, customer, cart, cart_item, order_coupon
+):
+    order = place_order(cart, customer, dict(VALID_DATA), coupon_code="THOUGHTS15")
+    client.force_login(customer)
+
+    confirmation = client.get(reverse("orders:confirmation", kwargs={"pk": order.pk}))
+    detail = client.get(reverse("orders:detail", kwargs={"pk": order.pk}))
+
+    assert "THOUGHTS15 saved you $105.00" in confirmation.content.decode()
+    page = detail.content.decode()
+    assert "Subtotal $699.98" in page
+    assert "THOUGHTS15 −$105.00" in page
+    assert "594.98" in page
 
 
 # --- The saved-address picker (HTMX) -----------------------------------------

@@ -3,8 +3,10 @@
 Every rule is visible at its field declaration, in the style of data
 annotations: field types validate (``EmailField``), field arguments
 validate (``required``, ``max_length``, ``ChoiceField``), and the
-``validators=[...]`` list carries the rest. No ``clean_*`` methods
-and no ``clean()`` — none of its current rules need imperative validation.
+``validators=[...]`` list carries the rest. One ``clean_*`` method, and
+only because its rule needs context a validator can't see: the coupon
+code is checked against this customer's cart, via the same
+``Coupon.discount_for`` that ``place_order`` uses.
 
 The postal vocabulary (``US_STATES``, ``zip_validator``) lives in
 ``accounts``, beside the ``Address`` model that also stores it. Checkout
@@ -15,6 +17,7 @@ from django import forms
 from django.core.validators import RegexValidator
 
 from accounts.models import US_STATES, zip_validator
+from coupons.models import Coupon, CouponError, normalize_code
 
 from .models import Order
 from .validators import validate_card_number, validate_expiry
@@ -63,8 +66,17 @@ class CheckoutForm(forms.Form):
     )
     card_cvv = forms.CharField(label="CVV", max_length=4, validators=[cvv_validator])
 
-    def __init__(self, *args, **kwargs):
+    # Filled by the order summary's Apply button (a hidden input), so the
+    # code submitted is exactly the one the customer saw previewed.
+    coupon_code = forms.CharField(
+        max_length=30, required=False, widget=forms.HiddenInput
+    )
+
+    def __init__(self, *args, cart=None, user=None, **kwargs):
+        """``cart`` and ``user`` are needed only to validate a coupon code."""
         super().__init__(*args, **kwargs)
+        self.cart = cart
+        self.user = user
         for field in self.fields.values():
             widget = field.widget
             if isinstance(widget, forms.CheckboxInput):
@@ -87,6 +99,15 @@ class CheckoutForm(forms.Form):
 
     def card_fields(self):
         return [self[name] for name in self.fields if name.startswith("card_")]
+
+    def clean_coupon_code(self):
+        code = normalize_code(self.cleaned_data["coupon_code"])
+        if code:
+            try:
+                Coupon.objects.lookup(code).discount_for(self.cart, self.user)
+            except CouponError as error:
+                raise forms.ValidationError(str(error)) from None
+        return code
 
 
 class OrderStatusForm(forms.ModelForm):

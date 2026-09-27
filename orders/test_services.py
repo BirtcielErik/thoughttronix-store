@@ -1,14 +1,17 @@
 """place_order tests — coverage priority 3 in the PRD.
 
-Denormalization, cart emptying, atomicity, unavailable rejection, and
-the card_last4-only rule.
+Denormalization, cart emptying, atomicity, unavailable rejection, the
+card_last4-only rule, and applying a coupon. The coupon's own rules
+(dates, minimum spend, once per customer) are tested in ``coupons``.
 """
 
+import datetime
 from decimal import Decimal
 
 import pytest
 
 from accounts.models import Address
+from coupons.models import CouponError
 from products.models import Product
 
 from .models import CartItem, Order, OrderItem
@@ -125,10 +128,86 @@ def test_a_failure_midway_leaves_no_partial_order(
     assert CartItem.objects.count() == 2
 
 
-def test_the_coupon_seam_is_accepted_and_ignored(cart, cart_item, checkout_data):
-    order = place_order(cart, cart.user, checkout_data, coupon_code="THOUGHTS10")
+# --- Coupons ------------------------------------------------------------------
 
-    assert order.total == Decimal("699.98")
+
+def test_no_coupon_means_no_discount(cart, cart_item, checkout_data):
+    order = place_order(cart, cart.user, checkout_data)
+
+    assert order.discount == Decimal("0.00")
+    assert order.coupon is None
+    assert order.coupon_code == ""
+    assert order.subtotal == order.total
+
+
+def test_an_order_coupon_discounts_the_total(
+    cart, cart_item, order_coupon, checkout_data
+):
+    order = place_order(cart, cart.user, checkout_data, coupon_code="thoughts15 ")
+
+    # 15% of 699.98 = 104.997, rounded half-up to the cent.
+    assert order.discount == Decimal("105.00")
+    assert order.total == Decimal("594.98")
+    assert order.subtotal == Decimal("699.98")
+    assert order.coupon == order_coupon
+    assert order.coupon_code == "THOUGHTS15"
+    assert order.items.get().discount == Decimal("0.00")  # not spread to lines
+
+
+def test_an_item_coupon_lands_on_its_line(
+    cart, cart_item, item_coupon, category, checkout_data
+):
+    other = Product.objects.create(
+        name="Charging Pillow",
+        slug="charging-pillow",
+        price=Decimal("69.00"),
+        category=category,
+    )
+    cart.add(other)
+
+    order = place_order(cart, cart.user, checkout_data, coupon_code="SERAPHINE25")
+
+    assert order.discount == Decimal("25.00")
+    assert order.total == Decimal("743.98")  # 699.98 + 69.00 - 25.00
+    hub = order.items.get(product_name="Seraphine Home Hub")
+    assert hub.discount == Decimal("25.00")
+    assert hub.charged_total == Decimal("674.98")
+    assert order.items.get(product_name="Charging Pillow").discount == 0
+
+
+def test_the_discount_is_a_snapshot(cart, cart_item, order_coupon, checkout_data):
+    order = place_order(cart, cart.user, checkout_data, coupon_code="THOUGHTS15")
+
+    order_coupon.is_active = False
+    order_coupon.ends_on = datetime.date(2020, 1, 1)
+    order_coupon.save()
+
+    order.refresh_from_db()
+    assert order.discount == Decimal("105.00")
+    assert order.coupon_code == "THOUGHTS15"
+
+
+def test_a_bad_coupon_places_nothing(cart, cart_item, order_coupon, checkout_data):
+    order_coupon.is_active = False
+    order_coupon.save()
+
+    with pytest.raises(CouponError, match="no longer valid"):
+        place_order(cart, cart.user, checkout_data, coupon_code="THOUGHTS15")
+
+    assert not Order.objects.exists()
+    assert cart.items.count() == 1  # the cart is untouched
+
+
+def test_a_coupon_error_is_a_value_error(cart, cart_item, checkout_data):
+    """place_order's documented contract: failures raise ValueError."""
+    with pytest.raises(ValueError, match="don't recognize"):
+        place_order(cart, cart.user, checkout_data, coupon_code="NOPE")
+
+
+def test_a_blank_coupon_code_is_no_coupon(cart, cart_item, checkout_data):
+    order = place_order(cart, cart.user, checkout_data, coupon_code="  ")
+
+    assert order.coupon is None
 
 
 # --- Saving addresses to the account -----------------------------------------

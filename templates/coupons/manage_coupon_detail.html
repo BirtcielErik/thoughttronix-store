@@ -1,0 +1,95 @@
+{% extends "backoffice/base.html" %}
+{% load humanize %}
+
+{% block title %}{{ coupon.code }} — Back office{% endblock %}
+
+{% block backoffice %}
+  <div class="flex flex-wrap items-center justify-between gap-4">
+    <div class="flex flex-wrap items-center gap-3">
+      <h2 class="font-mono text-2xl font-bold">{{ coupon.code }}</h2>
+      {% include "coupons/partials/_status_badge.html" %}
+    </div>
+    <div class="flex gap-2">
+      <a href="{% url 'coupons:manage_coupon_update' coupon.pk %}" class="btn btn-ghost btn-sm">Edit</a>
+      <form method="post" action="{% url 'coupons:manage_coupon_toggle' coupon.pk %}">
+        {% csrf_token %}
+        {% if coupon.is_active %}
+          <button type="submit" class="btn btn-outline btn-error btn-sm">Retire</button>
+        {% else %}
+          <button type="submit" class="btn btn-outline btn-success btn-sm">Reactivate</button>
+        {% endif %}
+      </form>
+    </div>
+  </div>
+  {% if coupon.description %}
+    <p class="mt-1 italic opacity-70">{{ coupon.description }}</p>
+  {% endif %}
+
+  <div class="mt-6 grid gap-6 sm:grid-cols-3">
+    <div class="card bg-base-100 shadow-md">
+      <div class="card-body">
+        <h3 class="card-title text-base">Offer</h3>
+        <p>{{ coupon.summary }}</p>
+        {% if coupon.min_spend %}
+          <p class="text-sm opacity-70">On orders of ${{ coupon.min_spend|intcomma }} or more</p>
+        {% endif %}
+      </div>
+    </div>
+    <div class="card bg-base-100 shadow-md">
+      <div class="card-body">
+        <h3 class="card-title text-base">Dates</h3>
+        <p>{% include "coupons/partials/_dates.html" %}</p>
+      </div>
+    </div>
+    <div class="card bg-base-100 shadow-md">
+      <div class="card-body items-end">
+        <p class="text-sm uppercase tracking-wide opacity-60">
+          {{ coupon.uses }} use{{ coupon.uses|pluralize }}
+        </p>
+        <p class="text-2xl font-bold text-primary">${{ coupon.discounted|floatformat:2|intcomma }}</p>
+        <p class="text-xs opacity-60">discounted, cancelled orders excluded</p>
+      </div>
+    </div>
+  </div>
+
+  <h3 class="mt-8 mb-3 text-lg font-semibold">Orders that used this code</h3>
+  {% if orders %}
+    <div class="overflow-x-auto rounded-box bg-base-100 shadow-md">
+      <table class="table">
+        <thead>
+          <tr>
+            <th>Order</th>
+            <th>Customer</th>
+            <th>Placed</th>
+            <th>Status</th>
+            <th class="text-right">Discount</th>
+            <th class="text-right">Total</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for order in orders %}
+            <tr>
+              <td>
+                <a href="{% url 'orders:manage_order_detail' order.pk %}"
+                   class="link-hover font-mono font-semibold">{{ order.number }}</a>
+              </td>
+              <td>{{ order.user.username }}</td>
+              <td>{{ order.created_at|date:"M j, Y" }}</td>
+              <td>{% include "orders/partials/_status_badge.html" %}</td>
+              <td class="text-right text-success">−${{ order.discount|intcomma }}</td>
+              <td class="text-right font-semibold">${{ order.total|intcomma }}</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  {% else %}
+    <div class="rounded-box bg-base-100 py-12 text-center shadow-md">
+      <p class="text-4xl">🎟️</p>
+      <p class="mt-3 font-semibold">Not used yet</p>
+      <p class="mt-1 text-sm opacity-70">Nobody has typed it in. Nobody we know of, anyway.</p>
+    </div>
+  {% endif %}
+
+  <a href="{% url 'coupons:manage_coupons' %}" class="btn btn-ghost btn-sm mt-8">← All coupons</a>
+{% endblock %}

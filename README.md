@@ -29,8 +29,13 @@ The `seed` command creates a fixed demo world — the same one every run:
 | Username   | Password      | Who they are                                                  |
 | ---------- | ------------- | ------------------------------------------------------------- |
 | `admin`    | `admin123`    | Superuser: everything below, plus the Django admin at `/admin/` |
-| `employee` | `employee123` | Staff: the back office (products, orders, dashboard)           |
+| `employee` | `employee123` | Staff: the back office (products, orders, coupons, dashboard)  |
+| `marketing` | `marketing123` | Staff, in marketing: runs the seasonal coupon codes          |
 | `customer` | `customer123` | A customer with order history and a live cart                  |
+
+Live coupon codes to try at checkout as `customer`: `THOUGHTS15` (15% off),
+`SERAPHINE25` ($25 off the Seraphine in the demo cart), and `BIGBRAIN50`
+($50 off orders of $500 or more).
 
 ## Commands
 

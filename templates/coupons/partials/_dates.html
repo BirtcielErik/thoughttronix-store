@@ -1,0 +1,10 @@
+{# A coupon's date window in words; either end may be open. #}
+{% if coupon.starts_on and coupon.ends_on %}
+  {{ coupon.starts_on|date:"M j, Y" }} – {{ coupon.ends_on|date:"M j, Y" }}
+{% elif coupon.starts_on %}
+  From {{ coupon.starts_on|date:"M j, Y" }}
+{% elif coupon.ends_on %}
+  Through {{ coupon.ends_on|date:"M j, Y" }}
+{% else %}
+  <span class="opacity-60">No end date</span>
+{% endif %}

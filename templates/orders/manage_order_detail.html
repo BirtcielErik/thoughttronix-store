@@ -38,7 +38,14 @@
             </td>
             <td>${{ item.unit_price|intcomma }}</td>
             <td>{{ item.quantity }}</td>
-            <td class="text-right font-semibold">${{ item.line_total|intcomma }}</td>
+            <td class="text-right font-semibold">
+              ${{ item.line_total|intcomma }}
+              {% if item.discount %}
+                <p class="text-xs font-normal text-success">
+                  {{ order.coupon_code }} −${{ item.discount|intcomma }}
+                </p>
+              {% endif %}
+            </td>
           </tr>
         {% endfor %}
       </tbody>
@@ -79,6 +86,14 @@
           <button type="submit" class="btn btn-primary">Update</button>
         </form>
         <div class="mt-4 text-right">
+          {% if order.coupon %}
+            <p class="text-sm opacity-70">Subtotal ${{ order.subtotal|intcomma }}</p>
+            <p class="text-sm text-success">
+              <a href="{% url 'coupons:manage_coupon_detail' order.coupon.pk %}"
+                 class="link-hover">{{ order.coupon_code }}</a>
+              −${{ order.discount|intcomma }}
+            </p>
+          {% endif %}
           <p class="text-sm uppercase tracking-wide opacity-60">Order total</p>
           <p class="text-2xl font-bold text-primary">${{ order.total|intcomma }}</p>
         </div>
