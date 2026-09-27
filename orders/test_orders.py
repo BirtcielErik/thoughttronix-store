@@ -190,8 +190,8 @@ def test_checkout_with_a_code_places_a_discounted_order(
     )
 
     order = Order.objects.get()
-    assert order.discount == Decimal("25.00")
-    assert order.total == Decimal("674.98")
+    assert order.discount == Decimal("50.00")  # $25 × 2 Hubs
+    assert order.total == Decimal("649.98")
     assert order.coupon_code == "SERAPHINE25"
 
 

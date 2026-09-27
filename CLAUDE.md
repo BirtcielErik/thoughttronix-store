@@ -23,7 +23,8 @@ A server-rendered Django 6 storefront and back office. The PRD (`prd/core-platfo
   and the `seed` command
 - `orders/` — cart, checkout, orders, and back-office order management
 - `coupons/` — `Coupon` (percent or fixed amount, order-wide or one
-  product; retired, never deleted), its rules (`Coupon.discount_for`), and
+  product — a fixed amount on a product comes off each unit; retired,
+  never deleted), its rules (`Coupon.discount_for`), and
   the back-office Coupons tab. `orders` imports `coupons`, never the reverse.
 - `dashboard/` — the staff analytics dashboard
 - `PROMPTS.md` — the AI-usage log; append entries, never rewrite history

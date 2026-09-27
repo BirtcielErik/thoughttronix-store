@@ -167,11 +167,11 @@ def test_an_item_coupon_lands_on_its_line(
 
     order = place_order(cart, cart.user, checkout_data, coupon_code="SERAPHINE25")
 
-    assert order.discount == Decimal("25.00")
-    assert order.total == Decimal("743.98")  # 699.98 + 69.00 - 25.00
+    assert order.discount == Decimal("50.00")  # $25 × 2 Hubs
+    assert order.total == Decimal("718.98")  # 699.98 + 69.00 - 50.00
     hub = order.items.get(product_name="Seraphine Home Hub")
-    assert hub.discount == Decimal("25.00")
-    assert hub.charged_total == Decimal("674.98")
+    assert hub.discount == Decimal("50.00")
+    assert hub.charged_total == Decimal("649.98")
     assert order.items.get(product_name="Charging Pillow").discount == 0
 
 

@@ -1,7 +1,8 @@
 """Coupons: seasonal discount codes that marketing runs from the back office.
 
 A coupon takes a percentage or a fixed amount off either the whole order
-or one product's cart line. Every rule about whether a code applies, and
+or one product's cart line; a fixed amount on a product comes off each
+unit in the line. Every rule about whether a code applies, and
 how much it takes off, lives on the model: the checkout preview, the
 checkout form, and ``place_order`` all ask ``Coupon.discount_for`` and
 nothing else.
@@ -137,7 +138,10 @@ class Coupon(models.Model):
         max_digits=10,
         decimal_places=2,
         validators=[MinValueValidator(CENT)],
-        help_text="A percentage (1–100) or a dollar amount, depending on the kind.",
+        help_text=(
+            "A percentage (1–100) or a dollar amount, depending on the kind. "
+            "Dollar amounts on a product coupon come off each unit."
+        ),
     )
     product = models.ForeignKey(
         Product,
@@ -243,23 +247,32 @@ class Coupon(models.Model):
             amount = f"{self.value.normalize():f}%"
         else:
             amount = f"${self.value:,.2f}"
-        target = self.product.name if self.product else "the whole order"
+        if self.product is None:
+            target = "the whole order"
+        elif self.kind == self.Kind.AMOUNT:
+            target = f"each {self.product.name}"
+        else:
+            target = self.product.name
         return f"{amount} off {target}"
 
     def has_been_used(self) -> bool:
         """Whether any order, cancelled or not, carries this coupon."""
         return self.orders.exists()
 
-    def amount_off(self, base: Decimal) -> Decimal:
+    def amount_off(self, base: Decimal, *, units: int = 1) -> Decimal:
         """The discount on ``base``: rounded to the cent, never more than ``base``.
 
         ``base`` is the cart subtotal for an order-wide coupon, or the
-        targeted product's line total for an item coupon.
+        targeted product's line total for an item coupon. ``units`` is that
+        line's quantity: a fixed amount comes off each unit, so item-coupon
+        callers must pass it. A percentage ignores it (a share of the line
+        already covers every unit), and an order-wide coupon applies once,
+        so its callers leave it at 1.
         """
         if self.kind == self.Kind.PERCENT:
             amount = (base * self.value / 100).quantize(CENT, rounding=ROUND_HALF_UP)
         else:
-            amount = self.value
+            amount = self.value * units
         return min(amount, base)
 
     def discount_for(self, cart: Cart, user: AbstractBaseUser) -> Discount:
@@ -284,7 +297,7 @@ class Coupon(models.Model):
 
         subtotal = cart.total()
         if self.product_id is None:
-            base = subtotal
+            base, units = subtotal, 1
         else:
             line = next(
                 (line for line in cart.lines() if line.product_id == self.product_id),
@@ -295,9 +308,13 @@ class Coupon(models.Model):
                     f"{self.code} applies to {self.product.name}, "
                     "which isn't in your cart."
                 )
-            base = line.line_total
+            base, units = line.line_total, line.quantity
         if self.min_spend and subtotal < self.min_spend:
             raise CouponError(
                 f"{self.code} needs an order of at least ${self.min_spend:,.2f}."
             )
-        return Discount(coupon=self, amount=self.amount_off(base), product=self.product)
+        return Discount(
+            coupon=self,
+            amount=self.amount_off(base, units=units),
+            product=self.product,
+        )

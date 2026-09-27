@@ -91,9 +91,22 @@ def test_a_fixed_amount_is_capped_at_the_base(item_coupon):
     assert item_coupon.amount_off(Decimal("6.00")) == Decimal("6.00")
 
 
+def test_a_fixed_amount_comes_off_each_unit(item_coupon):
+    assert item_coupon.amount_off(Decimal("300.00"), units=3) == Decimal("75.00")
+
+
+def test_a_fixed_amount_per_unit_is_capped_at_the_base(item_coupon):
+    # 3 × $25 = $75, but three $20 units only total $60.
+    assert item_coupon.amount_off(Decimal("60.00"), units=3) == Decimal("60.00")
+
+
+def test_a_percentage_ignores_units(order_coupon):
+    assert order_coupon.amount_off(Decimal("100.00"), units=3) == Decimal("15.00")
+
+
 def test_summary_reads_as_an_offer(order_coupon, item_coupon):
     assert order_coupon.summary == "15% off the whole order"
-    assert item_coupon.summary == "$25.00 off Seraphine Home Hub"
+    assert item_coupon.summary == "$25.00 off each Seraphine Home Hub"
 
 
 # --- discount_for: every way a code can fail -------------------------------------
@@ -106,11 +119,18 @@ def test_an_order_coupon_discounts_the_subtotal(cart, cart_item, order_coupon):
     assert discount.product is None
 
 
-def test_an_item_coupon_discounts_its_line(cart, cart_item, item_coupon):
+def test_an_item_coupon_discounts_each_unit_on_its_line(cart, cart_item, item_coupon):
     discount = item_coupon.discount_for(cart, cart.user)
 
-    assert discount.amount == Decimal("25.00")
+    assert discount.amount == Decimal("50.00")  # $25 × 2 Hubs
     assert discount.product == cart_item.product
+
+
+def test_an_item_coupon_on_one_unit_takes_its_amount_once(cart, cart_item, item_coupon):
+    cart_item.quantity = 1
+    cart_item.save()
+
+    assert item_coupon.discount_for(cart, cart.user).amount == Decimal("25.00")
 
 
 @pytest.mark.parametrize(
@@ -140,7 +160,7 @@ def test_minimum_spend_is_measured_against_the_cart_subtotal(
     # The Hub line alone is 699.98; the minimum counts the whole cart.
     item_coupon.min_spend = Decimal("699.98")
 
-    assert item_coupon.discount_for(cart, cart.user).amount == Decimal("25.00")
+    assert item_coupon.discount_for(cart, cart.user).amount == Decimal("50.00")
 
 
 def test_an_item_coupon_needs_its_product_in_the_cart(cart, item_coupon, category):

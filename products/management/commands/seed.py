@@ -865,14 +865,15 @@ class Command(BaseCommand):
         discount, discounted_product = Decimal("0.00"), None
         if coupon:
             discounted_product = coupon.product
-            base = subtotal
+            base, units = subtotal, 1
             if discounted_product:
-                base = next(
-                    product.price * quantity
+                units = next(
+                    quantity
                     for product, quantity in lines
                     if product == discounted_product
                 )
-            discount = coupon.amount_off(base)
+                base = discounted_product.price * units
+            discount = coupon.amount_off(base, units=units)
         order = Order.objects.create(
             user=user,
             status=status,
