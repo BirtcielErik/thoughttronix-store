@@ -33,44 +33,14 @@ A server-rendered Django 6 storefront and back office. The PRD (`prd/core-platfo
 - `assets/` — static sources; `assets/css/source.css` is the Tailwind input,
   `assets/css/tailwind.css` is compiled output (gitignored, never edit)
 
-## Architecture convention
+## Architecture and URL convention
 
-Logic lives in models and managers; cross-model workflows get a service
-module; views stay thin.
-
-Exactly two deliberate deep modules, docstrings and type hints on every
-public function: `orders/services.py` (`place_order`, whose `coupon_code`
-is checked there as the final authority) and `dashboard/queries.py` (the
-dashboard's aggregations).
-
-Idiomatic Django throughout: class-based views, model methods, custom
-managers/querysets, forms own their validation. Settings read from `.env`
-via environs with working defaults — the app must run with no `.env` present.
+Before touching models, views, services, settings, or adding or changing URLs, read `docs/ARCHITECTURE.md`.
 
 ## Template conventions
 
-- Every page extends the project-level `templates/base.html` (DaisyUI navbar,
-  footer motto). DaisyUI theme: `night`, set in `assets/css/source.css` and
-  `data-theme` on `<html>`.
-- Back-office pages extend `templates/backoffice/base.html` — the staff shell
-  with the tab rail; the active tab comes from the view's `section` context
-  entry.
-- HTMX endpoints render partials from `templates/<app>/partials/_<name>.html` —
-  prefixed with an underscore, never extending `base.html`.
-- Every list view gets a designed empty state, not a blank page.
-- Styling is Tailwind + DaisyUI classes only; no crispy-forms, no JavaScript
-  beyond HTMX.
-
-## URL conventions
-
-- Every URL is named; every app has a namespace (`products:catalog`,
-  `orders:checkout`).
-- Public catalog URLs use slugs (`/products/seraphine-home-hub/`);
-  back-office URLs use pks.
-- `Product` defines `get_absolute_url`.
+Before touching templates, HTMX, or styling, read `docs/FRONTEND.md`.
 
 ## Testing
 
-pytest + pytest-django. Shared fixtures live in the project-level
-`conftest.py` — plain fixtures, no factory-boy. Tests never invoke the seed
-command. The suite must be green at every phase boundary.
+Before writing or changing tests, read `docs/TESTING.md`.
