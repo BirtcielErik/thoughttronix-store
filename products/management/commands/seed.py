@@ -13,9 +13,12 @@ Demo logins (documented in the README):
 """
 
 import random
+import shutil
 from datetime import timedelta
 from decimal import Decimal
+from pathlib import Path
 
+from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.core.management.base import BaseCommand
 from django.db import transaction
@@ -427,6 +430,10 @@ CATALOG = {
     ],
 }
 
+# Product photos, named <product slug>.png. Products without one show
+# their category placeholder.
+SEED_IMAGES = Path(__file__).resolve().parents[2] / "seed_images"
+
 DEMO_USERS = [
     # (username, password, email, first, last, is_staff, is_superuser, job_title)
     ("admin", "admin123", "admin@example.com", "Ada", "Admin", True, True, None),
@@ -638,6 +645,8 @@ class Command(BaseCommand):
         Coupon.objects.all().delete()
         Cart.objects.all().delete()
         Product.objects.all().delete()
+        # A bulk delete leaves image files behind; clear them all.
+        shutil.rmtree(Path(settings.MEDIA_ROOT) / "products", ignore_errors=True)
         Tag.objects.all().delete()
         Category.objects.all().delete()
 
@@ -667,6 +676,11 @@ class Command(BaseCommand):
                     category=category,
                 )
                 product.tags.set(tags[tag_name] for tag_name in tag_names)
+                image = SEED_IMAGES / f"{product.slug}.png"
+                if image.exists():
+                    with image.open("rb") as source:
+                        product.set_image(source)
+                    product.save()
 
     def _create_users(self):
         User = get_user_model()

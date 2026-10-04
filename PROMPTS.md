@@ -28,6 +28,62 @@ Each entry has this shape:
     - **Deviations:** recommendations overridden, follow-up questions asked
     - **Sideways:** failures, wrong turns, and how they were caught
 
+## 2026-10-03 — Product images: grill-me design interview and handoff
+
+### Prompts
+
+1. `/grill-me Each product in the catalog should have an image associated
+   with it. If an image has not been uploaded for a product, the placeholder
+   image should be displayed. Employees should be able to add product images
+   via the back office page. If an employee uploads an incompatible file, the
+   upload should be rejected and an explanation given to the user.`
+2. "Keep per-category": Q1, an uploaded image falls back to the existing
+   category placeholder.
+3. "Exactly one": Q2, one optional `ImageField` on `Product`, no gallery.
+4. "On the product form": Q3, the upload goes on the existing create/edit
+   `ProductForm`.
+5. "JPEG, PNG, WebP": Q4, the allowed formats.
+6. "5 MB": Q5, the maximum upload size.
+7. *(Clarification)* Declined to answer Q6 (store as-is / downscale /
+   thumbnails), then asked: "A requirement that I did not mention is that
+   pages should load fast. Does this requirement change your
+   recommendation?"
+8. "Downscale + WebP": Q6 re-asked, shrink to at most 1200px and re-encode
+   as WebP on save.
+9. "Clear + delete old files": Q7, the image lifecycle.
+10. "Yes, seed attaches them": Q8, `seed` attaches the sample images from
+    `product-images/`.
+11. "SoulSear Mark II" and "No Text version": Q9, resolving the two
+    ambiguous filenames.
+12. "+ back-office thumbnails": Q10, where images display.
+13. *(Correction)* "Do not write this up anywhere": no PRD or plan.
+14. `/handoff the next session implements the design we just agreed`
+15. The session-log prompt from the top of this file.
+
+### Summary
+
+- **Outcome:** A ten-question design interview for product images, then a
+  handoff. No feature code was written. The agreed design and the
+  file-to-product image mapping are in `HANDOFF.md` for the next session to
+  implement. The working tree is otherwise as the session found it: the
+  uncommitted Pillow dependency, the untracked `product-images/`, and the
+  trailing-newline change in `config/urls.py`.
+- **Deviations:**
+  - Every answer took my recommendation, but Q6 only after a follow-up.
+    The user brought in a requirement they hadn't stated, that pages load
+    fast. That flipped my recommendation from "store as-is" to "downscale +
+    WebP", plus `loading="lazy"` and width/height attributes.
+  - When I offered a PRD and plan, the user declined.
+- **Sideways:**
+  - My first Q6 recommendation (store as-is) was built on the stated
+    requirements only. I never asked about performance, even though I had
+    already seen that the sample images are about 2 MB each and the catalog
+    shows 12 per page. The user caught it.
+  - "Do not write this up anywhere" (prompt 13) and `/handoff` (prompt 14)
+    pulled in opposite directions. I treated the explicit `/handoff` as the
+    exception and wrote `HANDOFF.md`, flagged it in my reply, and offered to
+    delete it.
+
 ## 2026-09-26 — Dollar-off item coupons apply per unit: grill-me, then the fix
 
 ### Prompts
