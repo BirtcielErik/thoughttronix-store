@@ -28,6 +28,82 @@ Each entry has this shape:
     - **Deviations:** recommendations overridden, follow-up questions asked
     - **Sideways:** failures, wrong turns, and how they were caught
 
+## 2026-10-03 — Product images: implemented from the handoff
+
+### Prompts
+
+1. `@HANDOFF.md Implement this feature`
+2. *(Interruption)* Rejected my PowerShell command that copied the sample
+   images into `products/seed_images/`, then asked: "What does that command
+   do?"
+3. "Go ahead, and delete the product-images folder once the new copies are
+   in place"
+4. "How can I manually verify the changes?"
+5. *(Follow-up)* "All images load immediately when refreshing the catalog
+   page, even ones that are not currently on the screen"
+6. The session-log prompt from the top of this file.
+
+### Summary
+
+- **Outcome:** Product images built to the `HANDOFF.md` design.
+  - **Model:** `Product.image` (migration `0004`) plus width/height
+    columns. `display_image` falls back to the category placeholder.
+    `set_image()` shrinks to at most 1200px and saves WebP, keeping
+    transparency. `save()`/`delete()` remove replaced, cleared, and deleted
+    files.
+  - **Form:** `ProductImageField` judges uploads by Pillow's detected
+    format and the `MAX_IMAGE_MB = 5` limit, with inline errors. Removal
+    is a separate toggle.
+  - **Templates:** catalog cards use a fixed 4:3 frame and the detail
+    page shows the whole image. The back office gets a list thumbnail
+    column and a current-image thumbnail on the form. Images have
+    `loading="lazy"` and `width`/`height`.
+  - **Seed:** reads `products/seed_images/<slug>.png` and wipes
+    `media/products/` first.
+  - **Settings:** `MEDIA_ROOT`/`MEDIA_URL`, DEBUG-only media serving, and
+    `media/` in `.gitignore`.
+  - **Tests:** 16 new tests in `products/test_images.py`. 276 pass and
+    ruff is clean. Checked in headless Edge with screenshots of the
+    catalog, detail page, back-office list, form, and a rejection.
+- **Deviations:**
+  - The handoff left the fate of `product-images/` to the user. I meant
+    to ask at the end, but the user interrupted the copy command first and
+    asked what it did. After my explanation they chose to delete the old
+    folder.
+  - Departures from the handoff that I chose myself and reported:
+    - **Unreadable files:** Pillow can't open HEIC or SVG, so those get
+      "isn't an image we can read" rather than the handoff's example
+      "is a HEIC file".
+    - **MPO:** accepted, because many phone-camera JPEGs come out as MPO.
+    - **Upload and remove together:** the upload wins.
+    - **Removal UI:** a separate toggle instead of Django's clearable
+      widget.
+  - The user asked for manual verification steps, then followed up when
+    one of those steps didn't hold.
+- **Sideways:**
+  - **Dimensions bug:** the first test run caught `image_width` staying
+    `None`. Django 6 reads dimensions from the content object, and a
+    nameless `ContentFile` counts as no file. Naming the content fixed it.
+  - **Bad test:** the transparency test used a fully opaque RGBA image,
+    whose alpha WebP rightly drops. Fixed the test color, not the code.
+  - **Lint:** ruff's DJ012 rejected my method order twice before
+    `save`/`get_absolute_url`/`delete` were placed correctly.
+  - **Unasked edit:** I rewrote the seed's `tags.set(...)` line for no
+    reason and reverted it right away.
+  - **Stale CSS:** the first browser pass showed uneven catalog cards.
+    `tailwind runserver` had stopped its watcher at once in the
+    background, so the CSS was stale (the known trap in memory). There was
+    also a real bug: an inline `<a>` kept `h-full` from working. Caught
+    from the screenshot, fixed with `block` and a forced Tailwind build.
+  - **Database reset:** verifying the seed reset the user's local
+    database. I backed up `db.sqlite3` to the scratchpad first and said so.
+  - **Wrong verification step:** my manual walkthrough told the user to
+    watch lazy loading on desktop, which can't show it. Chromium fetches
+    lazy images about 1250px ahead, and a 12-card desktop page fits inside
+    that. Measured it to confirm: desktop loaded 10 of 10 distinct images
+    up front, phone width loaded 4 and more on scroll. Corrected the steps
+    to use DevTools device mode. No code change.
+
 ## 2026-10-03 — Product images: grill-me design interview and handoff
 
 ### Prompts

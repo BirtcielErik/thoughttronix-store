@@ -1,3 +1,26 @@
+## Product Images
+Question 1: During the grill-me session, the agent asked me if I wanted to store and use the images at their default size. The agent recommended that the original size be used, however, I realized that I had not specified the "fast loading" requirement that was given by the marketing team. I was worried that using the original image sizes could lead to slow loading times, so I clarified the new requirement with the agent and asked if its recommendation would change given the new requirement. It agreed that its original suggestion would not be the best if load times were a concern, and so we decided to go a different direction on this particular issue.
+
+Question 2: `image = models.ImageField(
+        upload_to="products/",
+        blank=True,
+        width_field="image_width",
+        height_field="image_height",
+    )`
+
+    Located in `products/models.py:87` upload_to specifies the folder within our repo where the image will be stored. In this case, any image added to a product will placed inside a `pruducts/` subfolder.
+
+    `<form method="post" enctype="multipart/form-data" class="mt-2 space-y-4">`
+
+    Located in `templates/products/manage_product_form.html:13` enctype is needed because Django splits form input between text values and uploaded files. Without this addition, the browser will assume that the form is only returning text values and never correctly upload the file.
+
+    Question 3:
+    1) `media/products/seraphine_mirror.webp` | This is determined by `MEDIA_ROOT` which is defined in `config/settings.py:144`
+    2) `products/seraphine_mirror.webp` | This is determined by the `upload_to="products/"` within the image field of the Products model. This causes the value stored in the database to become "products/<file_name>"
+    3) `/media/products/seraphine_mirror.webp` | This is determined by `MEDIA_URL` which is defined in `config/settings.py:146`
+
+    The code that makes the media URL work on the development server is found in `config/urls.py:28` Without this line, Django has no way to locate files specified with a URL beginning with /media/. This is because media files can be created or uploaded during runtime, so we cannot simply add them to our urlpatterns list. 
+
 ## Discount Coupons
 Question 1: The first question of the grill-me session was whether to implement percentage discount codes only, or to build the functionality to include flat dollar off discounts as well. The agent recommended only implementing percent based discounts, but I chose to add both features. The agent recommended the easier-to-implement option, stating that the extra functionality could be added at a later date. I decided to gain the full functionality immediately, instead of pushing the update and waiting for the marketing team to request the feature. In my opinion, the agent's suggestion would leave the coupon feature feeling half-baked. That being said, my choice did add quite a lot of complexity to the implementation. Instead of two coupon types (percent off item | percent off order), there would now need to be four types (percent off item | percent off order | $ off item | $ off order) The Coupon model now has to have a "kind" field, and the logic needed to calculate the discount is different for each kind of coupon. This change also made the implementation of the back office interface more complex. The form to create a new coupon now had to be able to handle both types of coupons simultaneously, and explain to the employees how each type of coupon functions. All in all, the added complexity is worth it to create an end product that provides a better experience and more flexibility for the marketing team. 
 
