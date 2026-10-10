@@ -28,6 +28,75 @@ Each entry has this shape:
     - **Deviations:** recommendations overridden, follow-up questions asked
     - **Sideways:** failures, wrong turns, and how they were caught
 
+## 2026-10-10 — Account Security Center: implemented Phase 2 (sign in with username or email, and the hub), and fixed tests deleting media
+
+### Prompts
+
+1. "@prd/account-security-center.md @plans/account-security-center.md
+   Implement Phase 2."
+2. "How can I manually verify this phase in the browser?"
+3. "The "Security" page should be called "Account Security" for increased
+   clarity"
+4. "Change the navbar link too"
+5. "yes, update the PRD and plan"
+6. The session-log prompt from the top of this file. The user rejected
+   Claude's edit to this file and interrupted.
+7. "How would we fix the bug that is deleting the media file during
+   testing?"
+8. "yes, apply the shared fixture fix"
+9. The session-log prompt from the top of this file, again.
+
+### Summary
+
+- **Outcome:** Phase 2 was built and left uncommitted for the user. The
+  new `accounts/backends.py` adds `EmailOrUsernameBackend`, a
+  `ModelBackend` subclass. Input containing "@" is matched as an email
+  first, ignoring case, and then as a username. Other input is matched as
+  a username. Inactive users are still refused, and the password hasher
+  still runs when no account matches. It replaces `ModelBackend` in
+  `AUTHENTICATION_BACKENDS` rather than joining it, so a failed sign-in
+  is not hashed twice. `SignInForm` relabels its field "Username or
+  email". The hub, `SecurityView` at `accounts:security`, requires sign-in
+  only. Its page and navbar link are both titled "Account Security", and
+  it shows the username and email, or a "No email on file" warning. That
+  warning is plain text for now, because Phase 5 builds the change-email
+  page it will link to. A `superuser` fixture was added to `conftest.py`.
+  The new `accounts/test_security.py` covers every Phase 2 acceptance
+  criterion, including a test that the hasher still runs for an unknown
+  username or email. The PRD and plan were reworded to say "Account
+  Security". The pre-existing media-deletion bug was fixed: `media_root`
+  moved from `products/test_images.py` to an autouse fixture in the root
+  `conftest.py`, so no test writes to the real `media/`. Full suite green
+  at 305 tests, ruff clean, and a full run now leaves `media/` untouched.
+- **Deviations:** The user asked two follow-up questions: how to verify
+  the phase in the browser, and how to fix the media-deletion bug. They
+  changed the plan's wording twice. The page heading and tab title became
+  "Account Security" instead of "Security". Claude at first kept the
+  navbar link as "Security", because the PRD names it, and offered to
+  change it. The user had the link renamed too, then accepted Claude's
+  offer to update the PRD (Solution section, user story 17, Security
+  Center decisions) and the plan (Phase 2 text and checklist) to match.
+  "Security Center" was kept wherever it names the feature rather than
+  on-screen text. For the media bug, the user chose Claude's recommended
+  fix, the shared autouse fixture, over the narrower option of protecting
+  only the two seed tests.
+- **Sideways:** The first full test run had two failures in Claude's own
+  timing test. Its spy on the hasher wrapped a bound method and passed
+  `self` twice. It was fixed to wrap the unbound method. As the Phase 1
+  entry warned, both full test runs deleted the committed
+  `media/products/seraphine_mirror.webp`. Claude reported the suite green
+  without checking `git status`, and noticed the deletion only while
+  writing the first attempt at this log. It restored the file with
+  `git restore`. The user then rejected that log edit and asked how to fix
+  the bug for good, which led to the fixture fix. `db.sqlite3`, the
+  committed grading snapshot, also shows as modified. The test suite uses
+  its own database, so the likely cause is the manual verification: the
+  walkthrough told the user to run `migrate` and `seed` and add users in
+  the admin, without repeating Phase 1's warning that this writes to the
+  snapshot. It was left as is for the user to keep or restore. Known gap:
+  the sign-in field keeps Django's 150-character username limit, so an
+  email longer than that cannot be used to sign in.
+
 ## 2026-10-10 — Account Security Center: implemented Phase 1 (an email on every new account)
 
 ### Prompts

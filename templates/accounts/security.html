@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+
+{% block title %}Account Security — The ThoughtTronix Store{% endblock %}
+
+{% block content %}
+  <div>
+    <h1 class="text-3xl font-bold">Account Security</h1>
+    <p class="mt-1 opacity-70">What we have on file for you. We keep it safe, as we keep everything.</p>
+  </div>
+
+  <div class="mt-6 card bg-base-100 shadow-md">
+    <div class="card-body">
+      <dl class="space-y-4">
+        <div>
+          <dt class="text-sm opacity-70">Username</dt>
+          <dd class="text-lg font-semibold">{{ user.username }}</dd>
+        </div>
+        <div>
+          <dt class="text-sm opacity-70">Email</dt>
+          {% if user.email %}
+            <dd class="text-lg font-semibold">{{ user.email }}</dd>
+          {% else %}
+            <dd>
+              <div class="alert alert-warning" role="alert">
+                <span>
+                  No email on file — add one, so you can reset your password
+                  if you ever forget it.
+                </span>
+              </div>
+            </dd>
+          {% endif %}
+        </div>
+      </dl>
+    </div>
+  </div>
+{% endblock %}

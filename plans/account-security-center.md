@@ -58,7 +58,7 @@ Two things land in this phase.
 
 **Sign-in.** Add the custom authentication backend, register it in settings, and relabel the sign-in field "Username or email". A customer can sign in with either. An email matches regardless of capitalization. A legacy username that contains "@" still works because of the email-then-username lookup order. Inactive users are still refused. When no user matches, the password hasher still runs.
 
-**The hub.** Build the signed-in Security Center at `accounts:security`, reached from a new "Security" link beside "Addresses" in the navbar. It shows the username and current email. When no email is on file, it shows a "No email on file — add one" prompt instead. It follows the address book's shape: a list-style page that later phases' form pages redirect back to with a flash message. Its action links are added by the phases that build those actions.
+**The hub.** Build the signed-in Security Center at `accounts:security`, headed "Account Security" and reached from a new "Account Security" link beside "Addresses" in the navbar. It shows the username and current email. When no email is on file, it shows a "No email on file — add one" prompt instead. It follows the address book's shape: a list-style page that later phases' form pages redirect back to with a flash message. Its action links are added by the phases that build those actions.
 
 ### Acceptance criteria
 
@@ -73,7 +73,7 @@ Two things land in this phase.
 - [ ] The hub shows the signed-in user's username and email
 - [ ] For a user with no email, the hub shows the "No email on file" prompt
 - [ ] A customer, an employee and the superuser can each open the hub
-- [ ] The navbar shows "Security" for signed-in users only
+- [ ] The navbar shows "Account Security" for signed-in users only
 - [ ] Test suite green, ruff clean
 
 ---

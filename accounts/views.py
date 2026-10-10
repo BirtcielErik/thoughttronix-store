@@ -3,7 +3,13 @@ from django.contrib.auth.mixins import LoginRequiredMixin
 from django.contrib.auth.views import LoginView, LogoutView
 from django.contrib.messages.views import SuccessMessageMixin
 from django.urls import reverse_lazy
-from django.views.generic import CreateView, DeleteView, ListView, UpdateView
+from django.views.generic import (
+    CreateView,
+    DeleteView,
+    ListView,
+    TemplateView,
+    UpdateView,
+)
 
 from .forms import AddressForm, SignInForm, SignupForm
 from .models import Address
@@ -34,6 +40,19 @@ class SignOutView(LogoutView):
         response = super().post(request, *args, **kwargs)
         messages.info(request, "You have signed out.")
         return response
+
+
+# --- Security Center ----------------------------------------------------------
+#
+# Shaped like the address book: a hub page, plus separate form pages that
+# redirect back here with a flash message. Every signed-in user gets it —
+# customers, employees and the superuser alike — so there are no role checks.
+
+
+class SecurityView(LoginRequiredMixin, TemplateView):
+    """The Security Center hub: the account's username and email."""
+
+    template_name = "accounts/security.html"
 
 
 # --- Saved addresses --------------------------------------------------------

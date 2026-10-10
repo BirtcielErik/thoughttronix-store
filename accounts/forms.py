@@ -53,10 +53,15 @@ class SignupForm(UserCreationForm):
 
 
 class SignInForm(AuthenticationForm):
-    """The stock authentication form, dressed in DaisyUI."""
+    """The stock authentication form, dressed in DaisyUI.
+
+    The username field takes an email too; ``EmailOrUsernameBackend`` in
+    ``accounts.backends`` does the matching.
+    """
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+        self.fields["username"].label = "Username or email"
         for field in self.fields.values():
             field.widget.attrs["class"] = "input w-full"
 

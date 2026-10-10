@@ -29,6 +29,9 @@
             <a href="{% url 'accounts:addresses' %}" class="btn btn-ghost btn-sm">
               Addresses
             </a>
+            <a href="{% url 'accounts:security' %}" class="btn btn-ghost btn-sm">
+              Account Security
+            </a>
             {% include "orders/partials/_cart_badge.html" %}
             <span class="text-sm opacity-70">Hi, {{ user.username }}</span>
             {% if user.job_title %}

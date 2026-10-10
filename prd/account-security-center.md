@@ -18,7 +18,7 @@ An **Account Security Center**, plus the account email that makes it possible.
 
 **Email on every new account.** Signing up now asks for an email address, and it is required. Each email belongs to exactly one account, and capitalization does not matter — `Erik@Example.com` and `erik@example.com` are the same address.
 
-**The Security Center.** A signed-in page, reached from a new "Security" link in the navbar, that shows the account's username and current email and offers two actions:
+**The Security Center.** A signed-in page titled "Account Security", reached from a new "Account Security" link in the navbar, that shows the account's username and current email and offers two actions:
 
 - **Change password** — enter the current password and the new one twice. The customer stays signed in on this device and is signed out everywhere else.
 - **Change email** — enter the new address and the current password. Nothing changes yet: the store emails a confirmation link to the *new* address, and the change happens only when the customer opens that link and presses a confirm button. Once it does, the *old* address is told about it.
@@ -60,7 +60,7 @@ All mail is printed to the development server's console; no real mail leaves the
 
 **Customer in the Security Center**
 
-17. As a customer, I want a "Security" link in the navbar, so that I can find my account security settings.
+17. As a customer, I want an "Account Security" link in the navbar, so that I can find my account security settings.
 18. As a customer, I want the Security Center to show my username and my current email, so that I can check what the store has on file.
 19. As a customer whose account predates email at sign-up, I want the Security Center to tell me no email is on file and invite me to add one, so that I can make my account recoverable.
 20. As a customer, I want to change my password by entering my current password and a new one twice, so that I can keep my account secure.
@@ -125,7 +125,7 @@ All mail is printed to the development server's console; no real mail leaves the
 - **Change password** is Django's built-in password-change view, styled in DaisyUI, redirecting to the hub with a success message. Django already keeps the current session signed in and invalidates all other sessions.
 - **Change email** is a form view taking the new email and the current password. The form validates the current password, rejects the account's current email (case-insensitive), and rejects an email already used by another account. On success it emails a confirmation link to the new address and redirects to the hub with a "Check new@… for a confirmation link" message. The account's email is not changed at this step.
 - The Security Center is available to every signed-in user — customers, employees, and the superuser. No role checks.
-- A "Security" link joins the signed-in navbar beside "Addresses".
+- The hub's page heading is "Account Security", and an "Account Security" link joins the signed-in navbar beside "Addresses".
 
 **Email-change confirmation token**
 

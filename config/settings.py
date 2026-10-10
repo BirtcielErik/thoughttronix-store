@@ -95,6 +95,11 @@ DATABASES = {
 
 AUTH_USER_MODEL = "accounts.User"
 
+# Replaces ModelBackend rather than joining it: the custom backend already
+# does ModelBackend's username lookup, and a second backend would run the
+# password hasher twice on every failed sign-in.
+AUTHENTICATION_BACKENDS = ["accounts.backends.EmailOrUsernameBackend"]
+
 LOGIN_URL = "accounts:login"
 
 LOGIN_REDIRECT_URL = "products:catalog"

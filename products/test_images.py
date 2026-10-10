@@ -12,13 +12,6 @@ from PIL import Image
 pytestmark = pytest.mark.django_db
 
 
-@pytest.fixture(autouse=True)
-def media_root(settings, tmp_path):
-    """Uploads land in a throwaway directory, never the real media/."""
-    settings.MEDIA_ROOT = tmp_path
-    return tmp_path
-
-
 def image_upload(name="photo.png", size=(800, 600), fmt="PNG", mode="RGB"):
     # Half-transparent when RGBA: WebP drops an alpha channel that is
     # fully opaque.

@@ -15,6 +15,17 @@ from orders.models import Cart, CartItem
 from products.models import Category, Product, Tag
 
 
+@pytest.fixture(autouse=True)
+def media_root(settings, tmp_path):
+    """Every test writes media to a throwaway folder, never the real media/.
+
+    ``seed`` wipes ``MEDIA_ROOT/products``, and the real folder holds
+    committed uploads that a test run must not delete.
+    """
+    settings.MEDIA_ROOT = tmp_path
+    return tmp_path
+
+
 @pytest.fixture
 def customer(db):
     return get_user_model().objects.create_user(
@@ -29,6 +40,13 @@ def staff_user(db):
         password="employee123",
         is_staff=True,
         job_title="Junior Thought Curator",
+    )
+
+
+@pytest.fixture
+def superuser(db):
+    return get_user_model().objects.create_superuser(
+        username="admin", email="admin@example.com", password="admin123"
     )
 
 
