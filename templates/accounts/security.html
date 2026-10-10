@@ -23,8 +23,9 @@
             <dd>
               <div class="alert alert-warning" role="alert">
                 <span>
-                  No email on file — add one, so you can reset your password
-                  if you ever forget it.
+                  No email on file —
+                  <a href="{% url 'accounts:email_change' %}" class="link">add one</a>,
+                  so you can reset your password if you ever forget it.
                 </span>
               </div>
             </dd>
@@ -32,6 +33,9 @@
         </div>
       </dl>
       <div class="card-actions mt-4 justify-end">
+        <a href="{% url 'accounts:email_change' %}" class="btn btn-outline btn-sm">
+          Change email
+        </a>
         <a href="{% url 'accounts:password_change' %}" class="btn btn-primary btn-sm">
           Change password
         </a>

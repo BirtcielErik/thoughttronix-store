@@ -1,9 +1,31 @@
 from django.conf import settings
 from django.contrib.auth.models import AbstractUser
 from django.contrib.auth.models import UserManager as DjangoUserManager
+from django.core import signing
 from django.core.validators import RegexValidator
 from django.db import models, transaction
 from django.db.models.functions import Lower
+from django.utils.crypto import constant_time_compare, salted_hmac
+
+# --- Email-change confirmation tokens ---------------------------------------
+#
+# Stateless: nothing about a pending change is stored. The signed payload
+# names the account, the new email, the email current when the change was
+# requested, and a fingerprint of the password hash. Confirming changes the
+# email, so a link works once; changing the password changes the hash, so it
+# cancels every link not yet confirmed.
+
+EMAIL_CHANGE_SALT = "accounts.User.email_change"
+
+# One hour, like PASSWORD_RESET_TIMEOUT: long enough to reach an inbox, short
+# enough that a stale link is useless.
+EMAIL_CHANGE_MAX_AGE = 60 * 60
+
+
+def _password_fingerprint(user):
+    # An HMAC rather than the hash itself: a signed payload is readable by
+    # anyone holding the link.
+    return salted_hmac(EMAIL_CHANGE_SALT, user.password).hexdigest()
 
 
 class UserManager(DjangoUserManager):
@@ -17,6 +39,29 @@ class UserManager(DjangoUserManager):
         a missing one NULL. Matching ignores case anyway.
         """
         return email or None
+
+    def from_email_change_token(self, token):
+        """The ``(user, new_email)`` a confirmation token names, or None.
+
+        None covers every reason a link is dead — expired, tampered, the
+        email already changed since the request, the password changed since
+        the request, or the account deactivated — so the page can say one
+        thing for all of them.
+        """
+        try:
+            payload = signing.loads(
+                token, salt=EMAIL_CHANGE_SALT, max_age=EMAIL_CHANGE_MAX_AGE
+            )
+        except signing.BadSignature:
+            return None
+        user = self.filter(pk=payload["user"], is_active=True).first()
+        if (
+            user is None
+            or user.email != payload["old"]
+            or not constant_time_compare(_password_fingerprint(user), payload["pw"])
+        ):
+            return None
+        return user, payload["new"]
 
 
 class User(AbstractUser):
@@ -48,6 +93,21 @@ class User(AbstractUser):
                 violation_error_message="A user with that email already exists.",
             ),
         ]
+
+    def make_email_change_token(self, new_email):
+        """A signed, one-hour token that confirms a change to ``new_email``.
+
+        ``UserManager.from_email_change_token`` reads it back.
+        """
+        return signing.dumps(
+            {
+                "user": self.pk,
+                "new": new_email,
+                "old": self.email,
+                "pw": _password_fingerprint(self),
+            },
+            salt=EMAIL_CHANGE_SALT,
+        )
 
 
 # --- Postal vocabulary ------------------------------------------------------

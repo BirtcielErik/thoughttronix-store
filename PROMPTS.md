@@ -28,6 +28,83 @@ Each entry has this shape:
     - **Deviations:** recommendations overridden, follow-up questions asked
     - **Sideways:** failures, wrong turns, and how they were caught
 
+## 2026-10-10 — Account Security Center: implemented Phase 5 (change email, confirmed by link)
+
+### Prompts
+
+1. "@prd/account-security-center.md @plans/account-security-center.md
+   Implement Phase 5."
+2. "How can I manually verify this phase in the browser?"
+3. The session-log prompt from the top of this file.
+
+### Summary
+
+- **Outcome:** Phase 5 was built and left uncommitted for the user.
+  - **Token:** `User.make_email_change_token(new_email)` and
+    `User.objects.from_email_change_token(token)` in `accounts/models.py`.
+    The token is signed with Django's signing framework under its own
+    salt and lasts one hour (`EMAIL_CHANGE_MAX_AGE`). Its payload holds
+    the user id, the new email, the email at request time, and a password
+    fingerprint. The fingerprint is an HMAC of the password hash, not the
+    hash itself, because anyone holding the link can read the payload.
+    Every dead link reads back as `None`: expired, tampered, email already
+    changed, password changed, or account inactive.
+  - **Form:** `ChangeEmailForm` takes the new email and the current
+    password. It rejects a wrong password, the account's current email in
+    any capitalization, and an email already used by another account.
+  - **Views and URLs:** `ChangeEmailView` at `accounts:email_change`
+    (sign-in required) emails the link to the new address and redirects
+    to the hub with "Check … for a confirmation link."
+    `ConfirmEmailView` at `accounts:email_confirm` needs no sign-in.
+    Opening the link only shows the change; the confirm button's POST
+    applies it. The POST checks uniqueness again, sends the masked
+    "email was changed" notice (`E***@Example.org`) to the old address
+    when there is one, and redirects to the hub or to sign-in.
+  - **Templates:** the change-email page, the confirm page (normal, "now
+    in use", and invalid-link states), two plain-text emails, and a
+    "Change email" button on the hub. The hub's "No email on file" prompt
+    now links to the change-email page through "add one".
+  - **Tests:** 23 new test cases (parametrized cases counted) at the end
+    of `accounts/test_security.py`. They cover every Phase 5 acceptance
+    criterion, with a separate test for each rejection reason. The
+    one-hour limit is checked at 59 minutes (works) and 61 minutes
+    (fails) by patching `time.time` only while the token is signed.
+  - **Final state:** full suite green at 361 tests, ruff clean.
+- **Deviations:**
+  - **Follow-up question.** The user asked how to verify the phase in
+    the browser. Claude gave an 11-step walkthrough that uses the seeded
+    `customer` account (`customer@example.com`), copies links from the
+    dev-server terminal, uses a private window for the signed-out and
+    "address claimed" cases, and creates an email-less user in the Django
+    admin. It noted that the walkthrough changes `db.sqlite3` and that
+    `git restore db.sqlite3` puts it back. It also said the one-hour
+    expiry is covered only by the tests.
+  - **Judgment calls Claude raised.** These weren't questions put to the
+    user. Claude reported them and the user did not comment:
+    - The confirm view sends you to the hub only when you're signed in as
+      the account being changed. Otherwise it goes to sign-in.
+    - The password fingerprint is an HMAC rather than the raw hash.
+    - The mask format is the first letter plus the domain.
+- **Sideways:**
+  - **Wrong test count reported.** Claude's Phase 5 report said "30 new
+    tests". The real number is 23. The suite went from 338 to 361, and
+    counting the new cases agrees. Claude caught this while writing this
+    log, and the user had not commented on it.
+  - **Misdirected edit.** One Edit meant for the `accounts/views.py`
+    import list was sent to `accounts/forms.py`. It failed with "string
+    not found" and changed nothing, and Claude redid it on the right file.
+  - **Formatter wraps.** `ruff format --check` flagged one line in
+    `accounts/forms.py` and one in `accounts/views.py`. Claude applied
+    both with Edit rather than running the formatter. The full suite ran
+    *before* these two formatting-only edits and was not rerun after
+    them.
+  - **Stale CSS build.** `tailwind build` first reported "up to date" and
+    left out the new `break-all` class (see the stale-Tailwind memory).
+    `tailwind build --force` fixed it, and the class was confirmed in the
+    compiled CSS.
+  - **Not yet seen in a browser.** The walkthrough was given but has not
+    been reported on, so the new pages are verified only by the suite.
+
 ## 2026-10-10 — Account Security Center: implemented Phase 4 (forgot password)
 
 ### Prompts

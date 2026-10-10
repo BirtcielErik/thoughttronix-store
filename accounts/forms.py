@@ -85,6 +85,45 @@ class ChangePasswordForm(PasswordChangeForm):
             field.widget.attrs["class"] = "input w-full"
 
 
+class ChangeEmailForm(forms.Form):
+    """Ask for a new email, behind the current password.
+
+    The password keeps someone at an unattended signed-in computer from
+    pointing the account's password recovery at their own inbox. Valid
+    input changes nothing yet: the view emails a confirmation link to the
+    new address.
+    """
+
+    email = forms.EmailField(label="New email")
+    password = forms.CharField(
+        label="Current password",
+        strip=False,
+        widget=forms.PasswordInput(attrs={"autocomplete": "current-password"}),
+    )
+
+    def __init__(self, user, *args, **kwargs):
+        self.user = user
+        super().__init__(*args, **kwargs)
+        for field in self.fields.values():
+            field.widget.attrs["class"] = "input w-full"
+
+    def clean_email(self):
+        email = self.cleaned_data["email"]
+        if self.user.email and email.lower() == self.user.email.lower():
+            raise forms.ValidationError("That is already your email.")
+        if User.objects.filter(email__iexact=email).exists():
+            raise forms.ValidationError("That email is in use by another account.")
+        return email
+
+    def clean_password(self):
+        password = self.cleaned_data["password"]
+        if not self.user.check_password(password):
+            raise forms.ValidationError(
+                "Your current password was entered incorrectly."
+            )
+        return password
+
+
 class ForgotPasswordForm(PasswordResetForm):
     """The stock password-reset request form, minus superusers.
 

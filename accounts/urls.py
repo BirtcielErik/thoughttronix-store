@@ -14,6 +14,12 @@ urlpatterns = [
         views.ChangePasswordView.as_view(),
         name="password_change",
     ),
+    path("security/email/", views.ChangeEmailView.as_view(), name="email_change"),
+    path(
+        "security/email/confirm/<str:token>/",
+        views.ConfirmEmailView.as_view(),
+        name="email_confirm",
+    ),
     path("password-reset/", views.PasswordResetView.as_view(), name="password_reset"),
     path(
         "password-reset/sent/",

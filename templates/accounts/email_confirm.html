@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+
+{% block title %}Confirm your new email — The ThoughtTronix Store{% endblock %}
+
+{% block content %}
+  <div class="mx-auto max-w-sm">
+    <div class="card bg-base-100 shadow-md">
+      <div class="card-body">
+        {% if validlink %}
+          <h1 class="card-title text-2xl">Confirm your new email</h1>
+          {% if error %}
+            <div class="alert alert-error mt-2" role="alert"><span>{{ error }}</span></div>
+          {% endif %}
+          <p>Your account's email will become:</p>
+          <p class="text-lg font-semibold break-all">{{ new_email }}</p>
+          {# Only this POST changes anything, so a mail scanner opening the link cannot. #}
+          <form method="post" class="mt-4">
+            {% csrf_token %}
+            <button type="submit" class="btn btn-primary w-full">Confirm new email</button>
+          </form>
+        {% else %}
+          <h1 class="card-title text-2xl">Confirmation link not valid</h1>
+          <div class="alert alert-error mt-2" role="alert">
+            <span>This link is invalid or has expired.</span>
+          </div>
+          <p class="text-sm opacity-70">
+            Confirmation links work once, for one hour, and changing your
+            password cancels them. Request a new one to try again.
+          </p>
+          <div class="card-actions mt-4">
+            <a href="{% url 'accounts:security' %}" class="btn btn-primary w-full">
+              Go to Account Security
+            </a>
+          </div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+{% endblock %}

@@ -1,0 +1,16 @@
+{% autoescape off %}Hello {{ user.username }},
+
+Someone asked to change the email on your ThoughtTronix account
+({{ user.username }}) to this address: {{ new_email }}
+
+To confirm the change, open this link within one hour and press
+"Confirm new email":
+
+{{ link }}
+
+The link works only once. If you did not ask for this, you can ignore
+this email; nothing has changed.
+
+— ThoughtTronix
+Your Thoughts, Our Business.
+{% endautoescape %}

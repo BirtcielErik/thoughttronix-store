@@ -2,6 +2,7 @@
 forgot password."""
 
 import re
+import time
 from datetime import datetime, timedelta
 from http import HTTPStatus
 
@@ -470,3 +471,278 @@ def test_complete_page_alone_redirects_to_sign_in_without_a_message(client, db):
 
     assert response.redirect_chain[-1][0] == reverse("accounts:login")
     assert list(get_messages(response.wsgi_request)) == []
+
+
+# --- Change email ------------------------------------------------------------
+
+NEW_EMAIL = "Erik.New@Example.org"
+
+
+def request_email_change(client, email=NEW_EMAIL, password="erik-pass-123"):
+    return client.post(
+        reverse("accounts:email_change"),
+        {"email": email, "password": password},
+        follow=True,
+    )
+
+
+def confirm_link(message):
+    return re.search(r"http://testserver(/\S+)", message.body).group(1)
+
+
+def test_change_email_redirects_visitors_to_sign_in(client, db):
+    url = reverse("accounts:email_change")
+
+    response = client.get(url)
+
+    assert response.status_code == HTTPStatus.FOUND
+    assert response.url == f"{reverse('accounts:login')}?next={url}"
+
+
+@pytest.mark.parametrize("who", ["erik", "customer"], ids=["email", "no-email"])
+def test_hub_links_to_change_email(client, request, who):
+    user = request.getfixturevalue(who)
+    client.force_login(user)
+
+    page = client.get(reverse("accounts:security")).content.decode()
+
+    assert f'href="{reverse("accounts:email_change")}"' in page
+
+
+def test_no_email_prompt_links_to_change_email(client, customer):
+    client.force_login(customer)
+
+    page = client.get(reverse("accounts:security")).content.decode()
+
+    prompt = page[page.index("No email on file") :]
+    assert f'href="{reverse("accounts:email_change")}"' in prompt.split("</div>")[0]
+
+
+def test_change_email_rejects_a_wrong_password(client, erik):
+    client.force_login(erik)
+
+    response = request_email_change(client, password="not-the-password")
+
+    assert response.context["form"].errors["password"]
+    assert mail.outbox == []
+
+
+@pytest.mark.parametrize("email", ["Erik@Example.com", "erik@EXAMPLE.com"])
+def test_change_email_rejects_the_current_email(client, erik, email):
+    client.force_login(erik)
+
+    response = request_email_change(client, email=email)
+
+    assert response.context["form"].errors["email"] == ["That is already your email."]
+    assert mail.outbox == []
+
+
+@pytest.mark.parametrize("email", ["admin@example.com", "ADMIN@Example.COM"])
+def test_change_email_rejects_another_accounts_email(client, erik, superuser, email):
+    client.force_login(erik)
+
+    response = request_email_change(client, email=email)
+
+    assert response.context["form"].errors["email"] == [
+        "That email is in use by another account."
+    ]
+    assert mail.outbox == []
+
+
+def test_change_request_emails_the_new_address_only(client, erik):
+    client.force_login(erik)
+
+    response = request_email_change(client)
+
+    assert response.redirect_chain[-1][0] == reverse("accounts:security")
+    assert [str(m) for m in get_messages(response.wsgi_request)] == [
+        f"Check {NEW_EMAIL} for a confirmation link."
+    ]
+    assert len(mail.outbox) == 1
+    message = mail.outbox[0]
+    assert message.to == [NEW_EMAIL]
+    assert message.from_email == "ThoughtTronix <no-reply@thoughttronix.example>"
+    assert "erik" in message.body
+    assert confirm_link(message).startswith("/accounts/security/email/confirm/")
+    erik.refresh_from_db()
+    assert erik.email == "Erik@Example.com"
+
+
+def test_opening_the_link_shows_the_change_and_changes_nothing(client, erik):
+    client.force_login(erik)
+    request_email_change(client)
+
+    response = client.get(confirm_link(mail.outbox[0]))
+
+    page = response.content.decode()
+    assert response.status_code == HTTPStatus.OK
+    assert NEW_EMAIL in page
+    assert 'method="post"' in page
+    assert "Confirm new email</button>" in page
+    erik.refresh_from_db()
+    assert erik.email == "Erik@Example.com"
+    assert len(mail.outbox) == 1
+
+
+def test_confirm_while_signed_in_lands_on_the_hub(client, erik):
+    client.force_login(erik)
+    request_email_change(client)
+
+    response = client.post(confirm_link(mail.outbox[0]), follow=True)
+
+    assert response.redirect_chain[-1][0] == reverse("accounts:security")
+    assert [str(m) for m in get_messages(response.wsgi_request)] == [
+        f"Your email is now {NEW_EMAIL}."
+    ]
+    erik.refresh_from_db()
+    assert erik.email == NEW_EMAIL
+
+
+def test_confirm_while_signed_out_lands_on_sign_in(client, erik):
+    client.force_login(erik)
+    request_email_change(client)
+    link = confirm_link(mail.outbox[0])
+    phone = Client()
+
+    response = phone.post(link, follow=True)
+
+    assert response.redirect_chain[-1][0] == reverse("accounts:login")
+    assert [str(m) for m in get_messages(response.wsgi_request)] == [
+        f"Your email is now {NEW_EMAIL}."
+    ]
+    erik.refresh_from_db()
+    assert erik.email == NEW_EMAIL
+
+
+def test_confirm_sends_the_old_address_a_masked_notice(client, erik):
+    client.force_login(erik)
+    request_email_change(client)
+
+    client.post(confirm_link(mail.outbox[0]))
+
+    assert len(mail.outbox) == 2
+    notice = mail.outbox[1]
+    assert notice.to == ["Erik@Example.com"]
+    assert notice.from_email == "ThoughtTronix <no-reply@thoughttronix.example>"
+    assert "E***@Example.org" in notice.body
+    assert NEW_EMAIL not in notice.body
+    assert all(len(line) <= 78 for line in notice.body.splitlines())
+
+
+def test_user_with_no_email_can_add_one_without_a_notice(client, customer):
+    client.force_login(customer)
+    request_email_change(client, email="customer@example.com", password="customer123")
+
+    client.post(confirm_link(mail.outbox[0]))
+
+    customer.refresh_from_db()
+    assert customer.email == "customer@example.com"
+    assert len(mail.outbox) == 1
+
+
+def test_link_works_once(client, erik):
+    client.force_login(erik)
+    request_email_change(client)
+    link = confirm_link(mail.outbox[0])
+    client.post(link)
+
+    response = client.get(link)
+
+    assert INVALID_LINK in response.content.decode()
+
+
+def assert_invalid_link_page(response):
+    page = response.content.decode()
+    assert response.status_code == HTTPStatus.OK
+    assert INVALID_LINK in page
+    assert f'href="{reverse("accounts:security")}"' in page
+    assert "Confirm new email</button>" not in page
+
+
+@pytest.mark.parametrize(
+    ("age", "valid"),
+    [(timedelta(minutes=59), True), (timedelta(hours=1, minutes=1), False)],
+)
+def test_confirm_link_lasts_one_hour(client, erik, monkeypatch, age, valid):
+    issued = time.time() - age.total_seconds()
+    with monkeypatch.context() as m:
+        m.setattr(time, "time", lambda: issued)
+        token = erik.make_email_change_token(NEW_EMAIL)
+    link = reverse("accounts:email_confirm", kwargs={"token": token})
+
+    response = client.post(link)
+
+    erik.refresh_from_db()
+    if valid:
+        assert response.status_code == HTTPStatus.FOUND
+        assert erik.email == NEW_EMAIL
+    else:
+        assert_invalid_link_page(response)
+        assert erik.email == "Erik@Example.com"
+
+
+def test_tampered_confirm_link_is_invalid(client, erik):
+    _, signature = erik.make_email_change_token(NEW_EMAIL).split(":", 1)
+    # A payload naming another address, under the original's signature.
+    payload, _ = erik.make_email_change_token("thief@example.com").split(":", 1)
+    forged = f"{payload}:{signature}"
+
+    response = client.post(reverse("accounts:email_confirm", kwargs={"token": forged}))
+
+    assert_invalid_link_page(response)
+    erik.refresh_from_db()
+    assert erik.email == "Erik@Example.com"
+
+
+def test_confirm_link_dies_when_the_email_changed_since(client, erik):
+    token = erik.make_email_change_token(NEW_EMAIL)
+    erik.email = "elsewhere@example.com"
+    erik.save()
+
+    response = client.post(reverse("accounts:email_confirm", kwargs={"token": token}))
+
+    assert_invalid_link_page(response)
+    erik.refresh_from_db()
+    assert erik.email == "elsewhere@example.com"
+
+
+def test_changing_the_password_cancels_pending_links(client, erik):
+    client.force_login(erik)
+    request_email_change(client)
+    link = confirm_link(mail.outbox[0])
+    change_password(client, "erik-pass-123")
+
+    response = client.post(link)
+
+    assert_invalid_link_page(response)
+    erik.refresh_from_db()
+    assert erik.email == "Erik@Example.com"
+
+
+def test_address_claimed_before_confirming_changes_nothing(client, erik):
+    client.force_login(erik)
+    request_email_change(client)
+    get_user_model().objects.create_user(
+        username="quick", email=NEW_EMAIL.upper(), password="quick-pass-123"
+    )
+
+    response = client.post(confirm_link(mail.outbox[0]))
+
+    assert response.status_code == HTTPStatus.OK
+    assert "That email is now in use by another account." in response.content.decode()
+    erik.refresh_from_db()
+    assert erik.email == "Erik@Example.com"
+    assert len(mail.outbox) == 1
+
+
+def test_after_the_change_only_the_new_email_signs_in(client, erik):
+    client.force_login(erik)
+    request_email_change(client)
+    client.post(confirm_link(mail.outbox[0]))
+    client.logout()
+
+    sign_in(client, "Erik@Example.com", "erik-pass-123")
+    assert not signed_in_user(client).is_authenticated
+
+    sign_in(client, "erik.new@example.org", "erik-pass-123")
+    assert signed_in_user(client) == erik

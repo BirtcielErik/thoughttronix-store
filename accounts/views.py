@@ -7,10 +7,11 @@ from django.contrib.messages.views import SuccessMessageMixin
 from django.core.mail import send_mail
 from django.shortcuts import redirect
 from django.template.loader import render_to_string
-from django.urls import reverse_lazy
+from django.urls import reverse, reverse_lazy
 from django.views.generic import (
     CreateView,
     DeleteView,
+    FormView,
     ListView,
     TemplateView,
     UpdateView,
@@ -18,13 +19,14 @@ from django.views.generic import (
 
 from .forms import (
     AddressForm,
+    ChangeEmailForm,
     ChangePasswordForm,
     ForgotPasswordForm,
     SetNewPasswordForm,
     SignInForm,
     SignupForm,
 )
-from .models import Address
+from .models import Address, User
 
 
 class SignupView(SuccessMessageMixin, CreateView):
@@ -101,6 +103,100 @@ class ChangePasswordView(SuccessMessageMixin, PasswordChangeView):
         response = super().form_valid(form)
         send_password_changed_notice(form.user)
         return response
+
+
+def mask_email(email):
+    """``n***@example.com``: enough for the owner to recognize, no more."""
+    local, _, domain = email.partition("@")
+    return f"{local[:1]}***@{domain}"
+
+
+class ChangeEmailView(LoginRequiredMixin, FormView):
+    """Request an email change; the account's email stays as it is.
+
+    A signed link goes to the new address, and only opening it and pressing
+    confirm (``ConfirmEmailView``) makes the change, so a typo in the new
+    address cannot quietly break password recovery.
+    """
+
+    form_class = ChangeEmailForm
+    template_name = "accounts/email_change.html"
+    success_url = reverse_lazy("accounts:security")
+
+    def get_form_kwargs(self):
+        kwargs = super().get_form_kwargs()
+        kwargs["user"] = self.request.user
+        return kwargs
+
+    def form_valid(self, form):
+        user = self.request.user
+        new_email = form.cleaned_data["email"]
+        token = user.make_email_change_token(new_email)
+        link = self.request.build_absolute_uri(
+            reverse("accounts:email_confirm", kwargs={"token": token})
+        )
+        send_mail(
+            "Confirm your new ThoughtTronix email",
+            render_to_string(
+                "accounts/email/email_change_confirm.txt",
+                {"user": user, "new_email": new_email, "link": link},
+            ),
+            None,
+            [new_email],
+        )
+        messages.success(self.request, f"Check {new_email} for a confirmation link.")
+        return super().form_valid(form)
+
+
+class ConfirmEmailView(TemplateView):
+    """Apply an email change from its emailed link.
+
+    No sign-in needed: the signed token alone names the account and the
+    change, so the link works from a phone that has never signed in. A GET
+    only shows the change; the POST behind the confirm button makes it, so
+    a mail scanner that opens links cannot confirm one.
+    """
+
+    template_name = "accounts/email_confirm.html"
+
+    def dispatch(self, request, *args, **kwargs):
+        found = User.objects.from_email_change_token(kwargs["token"])
+        self.account, self.new_email = found or (None, None)
+        return super().dispatch(request, *args, **kwargs)
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        context["validlink"] = self.account is not None
+        context["new_email"] = self.new_email
+        return context
+
+    def post(self, request, *args, **kwargs):
+        if self.account is None:
+            return self.get(request, *args, **kwargs)
+        # Checked again: the address may have been claimed since the request.
+        if User.objects.filter(email__iexact=self.new_email).exists():
+            return self.render_to_response(
+                self.get_context_data(
+                    error="That email is now in use by another account."
+                )
+            )
+        old_email = self.account.email
+        self.account.email = self.new_email
+        self.account.save(update_fields=["email"])
+        if old_email:
+            send_mail(
+                "Your ThoughtTronix email was changed",
+                render_to_string(
+                    "accounts/email/email_changed.txt",
+                    {"user": self.account, "masked_email": mask_email(self.new_email)},
+                ),
+                None,
+                [old_email],
+            )
+        messages.success(request, f"Your email is now {self.new_email}.")
+        if request.user.pk == self.account.pk:
+            return redirect("accounts:security")
+        return redirect(settings.LOGIN_URL)
 
 
 # --- Forgot password ----------------------------------------------------------
