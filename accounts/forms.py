@@ -2,6 +2,8 @@ from django import forms
 from django.contrib.auth.forms import (
     AuthenticationForm,
     PasswordChangeForm,
+    PasswordResetForm,
+    SetPasswordForm,
     UserCreationForm,
 )
 
@@ -75,6 +77,38 @@ class ChangePasswordForm(PasswordChangeForm):
 
     Django's form already checks the current password, matches the new one
     against its confirmation, and runs ``AUTH_PASSWORD_VALIDATORS``.
+    """
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        for field in self.fields.values():
+            field.widget.attrs["class"] = "input w-full"
+
+
+class ForgotPasswordForm(PasswordResetForm):
+    """The stock password-reset request form, minus superusers.
+
+    Django already matches the email ignoring case and skips inactive users
+    and unusable passwords. Superusers are skipped too: whoever controls the
+    admin's inbox must not be able to take over the store, so the admin
+    recovers with ``manage.py changepassword`` instead. The page says the
+    same thing either way, so nobody learns whose email is on file.
+    """
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        for field in self.fields.values():
+            field.widget.attrs["class"] = "input w-full"
+
+    def get_users(self, email):
+        return (user for user in super().get_users(email) if not user.is_superuser)
+
+
+class SetNewPasswordForm(SetPasswordForm):
+    """The stock set-password form from a reset link, dressed in DaisyUI.
+
+    Django's form matches the new password against its confirmation and
+    runs ``AUTH_PASSWORD_VALIDATORS``.
     """
 
     def __init__(self, *args, **kwargs):

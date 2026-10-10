@@ -1,8 +1,11 @@
+from django.conf import settings
 from django.contrib import messages
+from django.contrib.auth import views as auth_views
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.contrib.auth.views import LoginView, LogoutView, PasswordChangeView
 from django.contrib.messages.views import SuccessMessageMixin
 from django.core.mail import send_mail
+from django.shortcuts import redirect
 from django.template.loader import render_to_string
 from django.urls import reverse_lazy
 from django.views.generic import (
@@ -13,7 +16,14 @@ from django.views.generic import (
     UpdateView,
 )
 
-from .forms import AddressForm, ChangePasswordForm, SignInForm, SignupForm
+from .forms import (
+    AddressForm,
+    ChangePasswordForm,
+    ForgotPasswordForm,
+    SetNewPasswordForm,
+    SignInForm,
+    SignupForm,
+)
 from .models import Address
 
 
@@ -91,6 +101,62 @@ class ChangePasswordView(SuccessMessageMixin, PasswordChangeView):
         response = super().form_valid(form)
         send_password_changed_notice(form.user)
         return response
+
+
+# --- Forgot password ----------------------------------------------------------
+#
+# Django's four password-reset views, moved into the accounts namespace (their
+# default success URLs name un-namespaced routes) and dressed in DaisyUI. The
+# link lifetime is PASSWORD_RESET_TIMEOUT in settings.
+
+
+class PasswordResetView(auth_views.PasswordResetView):
+    """Ask for an email and send a reset link if it matches an account.
+
+    The next page is the same whether or not anything was sent.
+    """
+
+    form_class = ForgotPasswordForm
+    template_name = "accounts/password_reset_form.html"
+    subject_template_name = "accounts/email/password_reset_subject.txt"
+    email_template_name = "accounts/email/password_reset.txt"
+    success_url = reverse_lazy("accounts:password_reset_done")
+
+
+class PasswordResetDoneView(auth_views.PasswordResetDoneView):
+    template_name = "accounts/password_reset_done.html"
+
+
+class PasswordResetConfirmView(
+    SuccessMessageMixin, auth_views.PasswordResetConfirmView
+):
+    """Choose a new password from a reset link.
+
+    Django's token dies once the password changes, so a link works once.
+    Saving the password also fails every existing session's auth hash, which
+    signs the account out everywhere; this view does not sign it back in.
+    """
+
+    form_class = SetNewPasswordForm
+    template_name = "accounts/password_reset_confirm.html"
+    success_url = reverse_lazy("accounts:password_reset_complete")
+    success_message = "Your password has been reset. Sign in with your new password."
+
+    def form_valid(self, form):
+        response = super().form_valid(form)
+        send_password_changed_notice(form.user)
+        return response
+
+
+class PasswordResetCompleteView(auth_views.PasswordResetCompleteView):
+    """Hand off to the sign-in page, where the success message shows.
+
+    The message is set by the confirm view, which knows a reset happened, so
+    opening this URL directly flashes nothing.
+    """
+
+    def get(self, request, *args, **kwargs):
+        return redirect(settings.LOGIN_URL)
 
 
 # --- Saved addresses --------------------------------------------------------

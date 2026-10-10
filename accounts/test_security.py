@@ -1,10 +1,14 @@
-"""Sign-in by username or email, the Security Center hub, and its actions."""
+"""Sign-in by username or email, the Security Center hub, its actions, and
+forgot password."""
 
+import re
+from datetime import datetime, timedelta
 from http import HTTPStatus
 
 import pytest
 from django.contrib.auth import get_user_model
 from django.contrib.auth.hashers import get_hasher
+from django.contrib.auth.tokens import default_token_generator
 from django.contrib.messages import get_messages
 from django.core import mail
 from django.test import Client
@@ -292,3 +296,177 @@ def test_no_notice_when_no_email_is_on_file(client, customer):
     change_password(client, "customer123")
 
     assert mail.outbox == []
+
+
+# --- Forgot password ---------------------------------------------------------
+
+SAME_MESSAGE = "If an account exists for that email, we've sent a link"
+INVALID_LINK = "This link is invalid or has expired."
+
+
+def request_reset(client, email):
+    return client.post(
+        reverse("accounts:password_reset"), {"email": email}, follow=True
+    )
+
+
+def reset_link(message):
+    return re.search(r"http://testserver(/\S+)", message.body).group(1)
+
+
+def set_new_password(client, link, new1=NEW_PASSWORD, new2=None):
+    """Open the emailed link, then post the new password to where it leads.
+
+    Django swaps the token out of the URL for "set-password" before
+    showing the form, so the POST goes to the redirect target.
+    """
+    opened = client.get(link)
+    assert opened.status_code == HTTPStatus.FOUND
+    return client.post(
+        opened.url,
+        {"new_password1": new1, "new_password2": new1 if new2 is None else new2},
+        follow=True,
+    )
+
+
+def test_sign_in_page_links_to_forgot_password(client, db):
+    page = client.get(reverse("accounts:login")).content.decode()
+
+    assert f'href="{reverse("accounts:password_reset")}"' in page
+    assert "Forgot your password?" in page
+
+
+def test_reset_request_sends_a_link_naming_the_username(client, erik):
+    response = request_reset(client, "Erik@Example.com")
+
+    assert response.redirect_chain[-1][0] == reverse("accounts:password_reset_done")
+    assert SAME_MESSAGE in response.content.decode()
+    assert len(mail.outbox) == 1
+    message = mail.outbox[0]
+    assert message.to == ["Erik@Example.com"]
+    assert message.from_email == "ThoughtTronix <no-reply@thoughttronix.example>"
+    assert "ThoughtTronix" in message.subject
+    assert "your username is: erik" in message.body
+    assert client.get(reset_link(message)).status_code == HTTPStatus.FOUND
+
+
+def test_reset_request_ignores_capitalization(client, erik):
+    request_reset(client, "ERIK@example.COM")
+
+    assert [m.to for m in mail.outbox] == [["Erik@Example.com"]]
+
+
+@pytest.mark.parametrize(
+    "email", ["nobody@example.com", "admin@example.com"], ids=["unknown", "superuser"]
+)
+def test_reset_request_sends_nothing_but_says_the_same(client, superuser, email):
+    response = request_reset(client, email)
+
+    assert response.redirect_chain[-1][0] == reverse("accounts:password_reset_done")
+    assert SAME_MESSAGE in response.content.decode()
+    assert mail.outbox == []
+
+
+def test_reset_lands_on_sign_in_signed_out_with_a_message(client, erik):
+    request_reset(client, "erik@example.com")
+
+    response = set_new_password(client, reset_link(mail.outbox[0]))
+
+    assert response.redirect_chain[-1][0] == reverse("accounts:login")
+    assert not response.context["user"].is_authenticated
+    assert [str(m) for m in get_messages(response.wsgi_request)] == [
+        "Your password has been reset. Sign in with your new password."
+    ]
+    assert 'class="alert alert-success"' in response.content.decode()
+    sign_in(client, "erik", NEW_PASSWORD)
+    assert signed_in_user(client) == erik
+
+
+@pytest.mark.parametrize("weak", ["short1", "password123", "8675309112"])
+def test_reset_password_must_pass_the_store_validators(client, erik, weak):
+    request_reset(client, "erik@example.com")
+
+    response = set_new_password(client, reset_link(mail.outbox[0]), new1=weak)
+
+    assert response.context["form"].errors["new_password2"]
+    erik.refresh_from_db()
+    assert erik.check_password("erik-pass-123")
+
+
+def test_reset_passwords_must_match(client, erik):
+    request_reset(client, "erik@example.com")
+
+    response = set_new_password(
+        client, reset_link(mail.outbox[0]), new2="something-Else-2026"
+    )
+
+    assert response.context["form"].errors["new_password2"]
+    erik.refresh_from_db()
+    assert erik.check_password("erik-pass-123")
+
+
+def test_used_reset_link_is_invalid(client, erik):
+    request_reset(client, "erik@example.com")
+    link = reset_link(mail.outbox[0])
+    set_new_password(client, link)
+
+    response = client.get(link)
+
+    assert response.status_code == HTTPStatus.OK
+    assert INVALID_LINK in response.content.decode()
+    assert response.context["form"] is None
+
+
+@pytest.mark.parametrize(
+    ("age", "valid"),
+    [(timedelta(minutes=59), True), (timedelta(hours=1, minutes=1), False)],
+)
+def test_reset_link_lasts_one_hour(client, erik, monkeypatch, age, valid):
+    request_reset(client, "erik@example.com")
+    link = reset_link(mail.outbox[0])
+    later = datetime.now() + age
+    monkeypatch.setattr(default_token_generator, "_now", lambda: later)
+
+    response = client.get(link)
+
+    if valid:
+        assert response.status_code == HTTPStatus.FOUND
+    else:
+        assert INVALID_LINK in response.content.decode()
+
+
+def test_tampered_reset_link_is_invalid(client, erik):
+    request_reset(client, "erik@example.com")
+
+    response = client.get(reset_link(mail.outbox[0])[:-3] + "xx/")
+
+    assert INVALID_LINK in response.content.decode()
+
+
+def test_reset_signs_out_existing_sessions(client, erik):
+    elsewhere = Client()
+    elsewhere.force_login(erik)
+    assert signed_in_user(elsewhere) == erik
+
+    request_reset(client, "erik@example.com")
+    set_new_password(client, reset_link(mail.outbox[0]))
+
+    assert not signed_in_user(elsewhere).is_authenticated
+
+
+def test_reset_sends_a_password_changed_notice(client, erik):
+    request_reset(client, "erik@example.com")
+
+    set_new_password(client, reset_link(mail.outbox[0]))
+
+    assert len(mail.outbox) == 2
+    notice = mail.outbox[1]
+    assert notice.to == ["Erik@Example.com"]
+    assert notice.subject == "Your ThoughtTronix password was changed"
+
+
+def test_complete_page_alone_redirects_to_sign_in_without_a_message(client, db):
+    response = client.get(reverse("accounts:password_reset_complete"), follow=True)
+
+    assert response.redirect_chain[-1][0] == reverse("accounts:login")
+    assert list(get_messages(response.wsgi_request)) == []

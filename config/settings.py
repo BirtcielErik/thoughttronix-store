@@ -106,6 +106,11 @@ LOGIN_REDIRECT_URL = "products:catalog"
 
 LOGOUT_REDIRECT_URL = "products:catalog"
 
+# Reset links work for one hour (Django's default is three days), so an old
+# email left in an inbox cannot be used to take over the account. A fixed
+# security rule, not deployment config, so it is not read from .env.
+PASSWORD_RESET_TIMEOUT = 60 * 60
+
 AUTH_PASSWORD_VALIDATORS = [
     {
         "NAME": "django.contrib.auth.password_validation.UserAttributeSimilarityValidator",

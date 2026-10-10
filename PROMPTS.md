@@ -28,6 +28,68 @@ Each entry has this shape:
     - **Deviations:** recommendations overridden, follow-up questions asked
     - **Sideways:** failures, wrong turns, and how they were caught
 
+## 2026-10-10 — Account Security Center: implemented Phase 4 (forgot password)
+
+### Prompts
+
+1. "@prd/account-security-center.md @plans/account-security-center.md
+   Implement Phase 4."
+2. "How can I manually verify this phase in the browser?"
+3. The session-log prompt from the top of this file.
+
+### Summary
+
+- **Outcome:** Phase 4 was built and left uncommitted for the user.
+  - **Forms:** `ForgotPasswordForm` is Django's `PasswordResetForm` with
+    one change: it skips superusers, so the admin recovers with
+    `manage.py changepassword`. Django already matches the email in any
+    capitalization and skips inactive accounts. `SetNewPasswordForm` is
+    Django's `SetPasswordForm` with DaisyUI styling, so the store's
+    password validators still apply.
+  - **Views and URLs:** Django's four reset views are subclassed in
+    `accounts/views.py` and live at the plan's `accounts:password_reset*`
+    URLs. The set-password view sets the success message and sends the
+    Phase 3 `send_password_changed_notice`. It does not sign the user in.
+  - **Templates:** the request page, the "Check your email" page (the
+    same wording whether or not anything was sent), and the set-password
+    page with its "This link is invalid or has expired." state. There is
+    also a branded plain-text reset email that names the username, plus
+    its subject. The sign-in page gained a "Forgot your password?" link.
+  - **Settings:** `PASSWORD_RESET_TIMEOUT = 60 * 60`, with a comment
+    explaining why it is not read from `.env`.
+  - **Tests:** 19 new tests at the end of `accounts/test_security.py`
+    cover every Phase 4 acceptance criterion. Among them: the one-hour
+    limit, checked at 59 minutes (works) and 61 minutes (fails) by
+    patching the token generator's clock; used and tampered links; and a
+    second `Client` session that is signed out by the reset.
+  - **Final state:** full suite green at 338 tests, ruff clean.
+- **Deviations:**
+  - **Follow-up question.** The user asked how to verify the phase in
+    the browser. Claude gave a walkthrough that uses the seeded
+    `customer` account, copies links from the dev-server terminal, and
+    uses a private window to show other sessions being signed out. It
+    noted that the walkthrough changes `db.sqlite3`, the committed
+    grading snapshot, and that `git restore db.sqlite3` puts it back.
+  - **Judgment call on the "complete" view.** The PRD asks for all four
+    built-in views but also says the customer should land on the sign-in
+    page. Claude made the fourth view, at `password-reset/complete/`, a
+    plain redirect to sign-in. It put the success message in the
+    set-password view, so opening the complete URL directly shows no
+    false "password reset" message; a test covers this. Claude explained
+    this choice in its report, and the user did not comment on it.
+- **Sideways:**
+  - **Wrong test constant.** The first full run had 3 failures. The
+    test expected the apostrophe in "we've" to be HTML-escaped
+    (`&#x27;`), but it is literal template text, which Django never
+    escapes. Fixed in the test.
+  - **Formatter wrap.** `ruff format --check` wanted one `path(...)` in
+    `accounts/urls.py` on a single line. Claude made that change with an
+    Edit rather than running the formatter over the file.
+  - **Not yet seen in a browser.** The manual walkthrough was given but
+    has not been reported on. The pages are verified only by the suite.
+    The one new utility class, `text-right`, was confirmed to be in the
+    compiled CSS already.
+
 ## 2026-10-10 — Account Security Center: implemented Phase 3 (change password), fixed uncolored success messages, and made console email readable
 
 ### Prompts
