@@ -5,19 +5,51 @@ from .models import Address, User
 
 
 class SignupForm(UserCreationForm):
-    """Django's stock signup fields — username plus password and confirmation.
+    """Django's stock signup fields plus a required email.
 
-    No email: signing up asks for the minimum. The widgets carry DaisyUI
-    classes because plain Django forms own their own styling here.
+    The core platform asked for no email here ("signing up asks for the
+    minimum"); the Account Security Center reverses that, since an account
+    with no email cannot recover a forgotten password. Requiring it is this
+    form's rule, not the database's — accounts made elsewhere may lack one.
+
+    Usernames may not contain "@", so sign-in can tell a username from an
+    email. The widgets carry DaisyUI classes because plain Django forms own
+    their own styling here.
     """
 
     class Meta(UserCreationForm.Meta):
         model = User
+        fields = ("username", "email")
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+        self.fields["email"].required = True
+        # Django's stock help text still offers "@".
+        username = self.fields["username"]
+        username.help_text = (
+            "150 characters or fewer. Letters, digits and ./+/-/_ only."
+        )
         for field in self.fields.values():
             field.widget.attrs["class"] = "input w-full"
+
+    def clean_username(self):
+        username = super().clean_username()
+        if "@" in username:
+            raise forms.ValidationError(
+                'Usernames cannot contain "@", so they are never mistaken '
+                "for an email address when you sign in."
+            )
+        return username
+
+    def clean_email(self):
+        # A friendly field error ahead of the database's unique constraint.
+        email = self.cleaned_data["email"]
+        if User.objects.filter(email__iexact=email).exists():
+            raise forms.ValidationError(
+                "An account with that email already exists. "
+                "Sign in, or reset your password."
+            )
+        return email
 
 
 class SignInForm(AuthenticationForm):

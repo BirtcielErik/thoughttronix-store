@@ -28,6 +28,57 @@ Each entry has this shape:
     - **Deviations:** recommendations overridden, follow-up questions asked
     - **Sideways:** failures, wrong turns, and how they were caught
 
+## 2026-10-10 — Account Security Center: implemented Phase 1 (an email on every new account)
+
+### Prompts
+
+1. "@prd/account-security-center.md @plans/account-security-center.md
+   Implement Phase 1."
+2. "How can I manually verify this phase in the browser?"
+3. The session-log prompt from the top of this file.
+
+### Summary
+
+- **Outcome:** Phase 1 was built and left uncommitted for the user.
+  `User.email` became nullable, with a database constraint
+  `unique_user_email_ci` on `Lower("email")`. Migration
+  `accounts/0003_user_email_unique_nullable` makes the field nullable,
+  turns `""` emails into NULL, then adds the constraint, and can be
+  reversed. `SignupForm` now requires an email and rejects one already on
+  file in any capitalization. It also rejects usernames containing "@",
+  drops "@" from the username help text, and its docstring records the
+  reversal of the core platform's "minimum" sign-up. Tests were added to
+  `accounts/tests.py` and the new `accounts/test_user_email.py`, which
+  covers the database rule, NULLs coexisting, a superuser with no email,
+  the error message shown in the admin, and a real migrate-forward test of
+  the data step. Full suite green at 285 tests, ruff clean,
+  `makemigrations --check` clean. `seed` was also run twice against a
+  scratch database and left no `""` emails. The user's `db.sqlite3`
+  (the committed grading snapshot) was deliberately not migrated. The
+  follow-up got a step-by-step browser walkthrough covering the sign-up
+  page and the Django admin, plus a warning that test accounts land in
+  the snapshot database.
+- **Deviations:** The user overrode nothing and asked one follow-up: how
+  to verify the phase by hand. Claude made one design change to fit the
+  plan. It first converted `""` to NULL in an overridden `User.save()`.
+  When a test showed that Django's `normalize_email` lowercases the domain
+  (`Example.com` → `example.com`), breaking "stored exactly as typed",
+  Claude replaced the `save()` override with a `UserManager` whose
+  `normalize_email` returns the email as typed, or `None` when there is
+  none. Because that adds a manager to the migration, the operation was
+  folded into 0003 by hand rather than left as a separate 0004.
+- **Sideways:** The first full test run had two failures, both from the
+  domain lowercasing above. It also deleted the committed
+  `media/products/seraphine_mirror.webp`. Running each app's tests in turn
+  traced this to an existing bug, not to Phase 1: the seed tests in
+  `products/tests.py` run `seed` against the real `MEDIA_ROOT`, and `seed`
+  wipes `media/products/`. The file was put back with `git restore` after
+  each run, and the bug was reported but not fixed, because it falls
+  outside the phase. Any full test run will delete the file again until
+  those tests use a temporary media folder. Ruff's formatter wrapped the
+  username help-text assignment awkwardly, so that code was restructured
+  and formatted again.
+
 ## 2026-10-08 — Account Security Center: turned the PRD into a phased plan
 
 ### Prompts

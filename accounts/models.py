@@ -1,7 +1,22 @@
 from django.conf import settings
 from django.contrib.auth.models import AbstractUser
+from django.contrib.auth.models import UserManager as DjangoUserManager
 from django.core.validators import RegexValidator
 from django.db import models, transaction
+from django.db.models.functions import Lower
+
+
+class UserManager(DjangoUserManager):
+    @classmethod
+    def normalize_email(cls, email):
+        """The email as typed, or None when there is none — never "".
+
+        Django's version lowercases the domain and turns a missing email
+        into "". Both ``create_user`` and ``AbstractUser.clean`` call it,
+        so this is the one place that keeps the stored email as typed and
+        a missing one NULL. Matching ignores case anyway.
+        """
+        return email or None
 
 
 class User(AbstractUser):
@@ -9,10 +24,30 @@ class User(AbstractUser):
 
     Roles use Django's own vocabulary and nothing else: customers are
     plain users, employees are ``is_staff``, the admin is ``is_superuser``.
+
+    Each email belongs to at most one account, ignoring capitalization.
+    Sign-up requires one; accounts made elsewhere (the Django admin,
+    ``createsuperuser``, the shell, ``seed``) may have none.
     """
+
+    # Nullable so accounts without an email are NULL, never "" — two
+    # empty strings would collide under the case-insensitive unique
+    # constraint below, while NULLs never do. Stored as typed.
+    email = models.EmailField("email address", null=True, blank=True)  # noqa: DJ001
 
     # Nullable per the PRD: an absent job title is unknown, not empty.
     job_title = models.CharField(max_length=150, null=True, blank=True)  # noqa: DJ001
+
+    objects = UserManager()
+
+    class Meta(AbstractUser.Meta):
+        constraints = [
+            models.UniqueConstraint(
+                Lower("email"),
+                name="unique_user_email_ci",
+                violation_error_message="A user with that email already exists.",
+            ),
+        ]
 
 
 # --- Postal vocabulary ------------------------------------------------------

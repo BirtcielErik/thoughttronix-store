@@ -17,6 +17,7 @@ def test_signup_creates_plain_customer(client, db):
         reverse("accounts:signup"),
         {
             "username": "fresh-thinker",
+            "email": "Fresh.Thinker@Example.com",
             "password1": "neural-implant-9000",
             "password2": "neural-implant-9000",
         },
@@ -24,6 +25,7 @@ def test_signup_creates_plain_customer(client, db):
     )
 
     user = get_user_model().objects.get(username="fresh-thinker")
+    assert user.email == "Fresh.Thinker@Example.com"  # stored as typed
     assert not user.is_staff
     assert not user.is_superuser
 
@@ -39,6 +41,7 @@ def test_signup_password_mismatch_shows_field_error(client, db):
         reverse("accounts:signup"),
         {
             "username": "fresh-thinker",
+            "email": "fresh@example.com",
             "password1": "neural-implant-9000",
             "password2": "neural-implant-9001",
         },
@@ -47,6 +50,60 @@ def test_signup_password_mismatch_shows_field_error(client, db):
     assert response.status_code == HTTPStatus.OK
     assert response.context["form"].errors["password2"]
     assert not get_user_model().objects.filter(username="fresh-thinker").exists()
+
+
+def test_signup_without_email_is_refused(client, db):
+    response = client.post(
+        reverse("accounts:signup"),
+        {
+            "username": "fresh-thinker",
+            "email": "",
+            "password1": "neural-implant-9000",
+            "password2": "neural-implant-9000",
+        },
+    )
+
+    assert response.status_code == HTTPStatus.OK
+    assert response.context["form"].errors["email"]
+    assert not get_user_model().objects.filter(username="fresh-thinker").exists()
+
+
+def test_signup_with_email_taken_in_other_case_is_refused(client, db):
+    get_user_model().objects.create_user(
+        username="erik", email="erik@example.com", password="x"
+    )
+
+    response = client.post(
+        reverse("accounts:signup"),
+        {
+            "username": "fresh-thinker",
+            "email": "Erik@Example.com",
+            "password1": "neural-implant-9000",
+            "password2": "neural-implant-9000",
+        },
+    )
+
+    assert response.status_code == HTTPStatus.OK
+    assert "already exists" in response.context["form"].errors["email"][0]
+    assert not get_user_model().objects.filter(username="fresh-thinker").exists()
+
+
+def test_signup_with_at_sign_in_username_is_refused(client, db):
+    response = client.post(
+        reverse("accounts:signup"),
+        {
+            "username": "fresh@thinker",
+            "email": "fresh@example.com",
+            "password1": "neural-implant-9000",
+            "password2": "neural-implant-9000",
+        },
+    )
+
+    assert response.status_code == HTTPStatus.OK
+    error = response.context["form"].errors["username"][0]
+    assert '"@"' in error
+    assert "email address" in error
+    assert not get_user_model().objects.filter(username="fresh@thinker").exists()
 
 
 # --- Login and logout --------------------------------------------------------
