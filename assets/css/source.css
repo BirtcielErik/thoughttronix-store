@@ -1,5 +1,9 @@
 @import "tailwindcss";
 
+/* base.html builds flash-message classes as alert-{{ message.tags }}, which
+   Tailwind's scanner cannot see, so the four message levels are listed here. */
+@source inline("alert-{success,info,warning,error}");
+
 @plugin "daisyui" {
   themes: night --default;
 }

@@ -9,6 +9,11 @@ urlpatterns = [
     path("login/", views.SignInView.as_view(), name="login"),
     path("logout/", views.SignOutView.as_view(), name="logout"),
     path("security/", views.SecurityView.as_view(), name="security"),
+    path(
+        "security/password/",
+        views.ChangePasswordView.as_view(),
+        name="password_change",
+    ),
     # The customer's address book. Pks, like the other customer-owned
     # objects — slugs are the public catalog's convention.
     path("addresses/", views.AddressListView.as_view(), name="addresses"),

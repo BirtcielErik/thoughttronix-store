@@ -1,10 +1,13 @@
-"""Sign-in by username or email, and the Security Center hub."""
+"""Sign-in by username or email, the Security Center hub, and its actions."""
 
 from http import HTTPStatus
 
 import pytest
 from django.contrib.auth import get_user_model
 from django.contrib.auth.hashers import get_hasher
+from django.contrib.messages import get_messages
+from django.core import mail
+from django.test import Client
 from django.urls import reverse
 
 
@@ -156,3 +159,136 @@ def test_navbar_shows_security_to_signed_in_users_only(client, customer):
     page = client.get(reverse("products:catalog")).content.decode()
     assert link in page
     assert "Account Security" in page
+
+
+# --- Change password ---------------------------------------------------------
+
+NEW_PASSWORD = "fresh-Thoughts-2026"
+
+
+def change_password(client, old, new1=NEW_PASSWORD, new2=None, **kwargs):
+    return client.post(
+        reverse("accounts:password_change"),
+        {
+            "old_password": old,
+            "new_password1": new1,
+            "new_password2": new1 if new2 is None else new2,
+        },
+        **kwargs,
+    )
+
+
+def test_change_password_redirects_visitors_to_sign_in(client, db):
+    url = reverse("accounts:password_change")
+
+    response = client.get(url)
+
+    assert response.status_code == HTTPStatus.FOUND
+    assert response.url == f"{reverse('accounts:login')}?next={url}"
+
+
+def test_hub_links_to_change_password(client, customer):
+    client.force_login(customer)
+
+    page = client.get(reverse("accounts:security")).content.decode()
+
+    assert f'href="{reverse("accounts:password_change")}"' in page
+
+
+@pytest.mark.parametrize(
+    ("who", "password"),
+    [
+        ("customer", "customer123"),
+        ("staff_user", "employee123"),
+        ("superuser", "admin123"),
+    ],
+)
+def test_everyone_signed_in_can_change_their_password(client, request, who, password):
+    user = request.getfixturevalue(who)
+    client.force_login(user)
+
+    response = change_password(client, password)
+
+    assert response.status_code == HTTPStatus.FOUND
+    assert response.url == reverse("accounts:security")
+    user.refresh_from_db()
+    assert user.check_password(NEW_PASSWORD)
+
+
+def test_wrong_current_password_is_rejected(client, customer):
+    client.force_login(customer)
+
+    response = change_password(client, "not-the-password")
+
+    assert response.context["form"].errors["old_password"]
+    customer.refresh_from_db()
+    assert customer.check_password("customer123")
+
+
+def test_new_passwords_must_match(client, customer):
+    client.force_login(customer)
+
+    response = change_password(client, "customer123", new2="something-Else-2026")
+
+    assert response.context["form"].errors["new_password2"]
+    customer.refresh_from_db()
+    assert customer.check_password("customer123")
+
+
+@pytest.mark.parametrize("weak", ["short1", "password123", "8675309112"])
+def test_new_password_must_pass_the_store_validators(client, customer, weak):
+    client.force_login(customer)
+
+    response = change_password(client, "customer123", new1=weak)
+
+    assert response.context["form"].errors["new_password2"]
+    customer.refresh_from_db()
+    assert customer.check_password("customer123")
+
+
+def test_change_keeps_this_session_and_confirms_on_the_hub(client, customer):
+    client.force_login(customer)
+
+    response = change_password(client, "customer123", follow=True)
+
+    assert response.redirect_chain[-1][0] == reverse("accounts:security")
+    assert response.context["user"] == customer
+    assert [str(m) for m in get_messages(response.wsgi_request)] == [
+        "Password changed. You've been signed out everywhere else."
+    ]
+    assert 'class="alert alert-success"' in response.content.decode()
+
+
+def test_change_signs_out_other_sessions(client, customer):
+    elsewhere = Client()
+    elsewhere.force_login(customer)
+    assert signed_in_user(elsewhere) == customer
+    client.force_login(customer)
+
+    change_password(client, "customer123")
+
+    assert not signed_in_user(elsewhere).is_authenticated
+    assert signed_in_user(client) == customer
+
+
+def test_change_sends_a_notice_from_thoughttronix(client, erik):
+    client.force_login(erik)
+
+    change_password(client, "erik-pass-123")
+
+    assert len(mail.outbox) == 1
+    notice = mail.outbox[0]
+    assert notice.to == ["Erik@Example.com"]
+    assert notice.from_email == "ThoughtTronix <no-reply@thoughttronix.example>"
+    assert "password" in notice.subject.lower()
+    assert "erik" in notice.body
+    # Plain-text mail convention; longer lines are sent quoted-printable.
+    assert all(len(line) <= 78 for line in notice.body.splitlines())
+
+
+def test_no_notice_when_no_email_is_on_file(client, customer):
+    client.force_login(customer)
+
+    change_password(client, "customer123")
+
+    assert mail.outbox == []

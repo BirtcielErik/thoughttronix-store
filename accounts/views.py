@@ -1,7 +1,9 @@
 from django.contrib import messages
 from django.contrib.auth.mixins import LoginRequiredMixin
-from django.contrib.auth.views import LoginView, LogoutView
+from django.contrib.auth.views import LoginView, LogoutView, PasswordChangeView
 from django.contrib.messages.views import SuccessMessageMixin
+from django.core.mail import send_mail
+from django.template.loader import render_to_string
 from django.urls import reverse_lazy
 from django.views.generic import (
     CreateView,
@@ -11,7 +13,7 @@ from django.views.generic import (
     UpdateView,
 )
 
-from .forms import AddressForm, SignInForm, SignupForm
+from .forms import AddressForm, ChangePasswordForm, SignInForm, SignupForm
 from .models import Address
 
 
@@ -53,6 +55,42 @@ class SecurityView(LoginRequiredMixin, TemplateView):
     """The Security Center hub: the account's username and email."""
 
     template_name = "accounts/security.html"
+
+
+def send_password_changed_notice(user):
+    """Tell the account's inbox its password changed; skip if none is on file.
+
+    Sent from the view that completes the change, and from no service
+    module: it touches one model. ``from_email`` is left to
+    ``DEFAULT_FROM_EMAIL``, the ThoughtTronix sender.
+    """
+    if not user.email:
+        return
+    send_mail(
+        "Your ThoughtTronix password was changed",
+        render_to_string("accounts/email/password_changed.txt", {"user": user}),
+        None,
+        [user.email],
+    )
+
+
+class ChangePasswordView(SuccessMessageMixin, PasswordChangeView):
+    """Django's password change, which already requires sign-in.
+
+    Django re-hashes this session's auth hash so the user stays signed in
+    here, and every other session for the account fails its hash check and
+    is signed out.
+    """
+
+    form_class = ChangePasswordForm
+    template_name = "accounts/password_change.html"
+    success_url = reverse_lazy("accounts:security")
+    success_message = "Password changed. You've been signed out everywhere else."
+
+    def form_valid(self, form):
+        response = super().form_valid(form)
+        send_password_changed_notice(form.user)
+        return response
 
 
 # --- Saved addresses --------------------------------------------------------

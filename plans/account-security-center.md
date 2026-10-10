@@ -20,7 +20,7 @@ Durable decisions that apply across all phases:
 - **Authentication**: a custom email-or-username backend, registered in `AUTHENTICATION_BACKENDS`. Input containing "@" is tried as a case-insensitive email first, then as a username. Any other input is matched as a username. The backend keeps Django's inactive-user check and its timing-safe hasher run.
 - **Authorization**: the Security Center and its action pages need sign-in only, with no role checks. Customers, employees and the superuser all use it. The email-confirm view needs no sign-in; its signed token alone authorizes the change.
 - **Email-change token**: stateless, built with Django's signing framework under a dedicated salt. The payload holds the user id, the new email, the email current at request time, and a fingerprint of the password hash. It is valid for one hour.
-- **Mail**: stays on the console backend. `DEFAULT_FROM_EMAIL = "ThoughtTronix <no-reply@thoughttronix.example>"`. Each notice is a plain-text template rendered and sent from the view that completes the action. There is no service module.
+- **Mail**: stays on the console backend, subclassed to print each message's plain body rather than its quoted-printable encoding, so links copied from the terminal work. `DEFAULT_FROM_EMAIL = "ThoughtTronix <no-reply@thoughttronix.example>"`. Each notice is a plain-text template rendered and sent from the view that completes the action. There is no service module.
 - **Password-reset lifetime**: one hour, set as a plain constant in settings with an explanatory comment. It is not read from `.env`.
 
 ---

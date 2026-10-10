@@ -158,7 +158,7 @@ All mail is printed to the development server's console; no real mail leaves the
 
 **Mail configuration**
 
-- The email backend stays the console backend; all mail prints to the development server's terminal.
+- The email backend stays the console backend; all mail prints to the development server's terminal. It is a small subclass of Django's console backend that prints each message's headers and plain body instead of the raw encoded message: Django sends a body with any line over 78 characters as quoted-printable, which would break reset and confirmation links copied from the terminal.
 - `DEFAULT_FROM_EMAIL` is set to `ThoughtTronix <no-reply@thoughttronix.example>`.
 
 **Seed command**

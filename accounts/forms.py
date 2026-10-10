@@ -1,5 +1,9 @@
 from django import forms
-from django.contrib.auth.forms import AuthenticationForm, UserCreationForm
+from django.contrib.auth.forms import (
+    AuthenticationForm,
+    PasswordChangeForm,
+    UserCreationForm,
+)
 
 from .models import Address, User
 
@@ -62,6 +66,19 @@ class SignInForm(AuthenticationForm):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.fields["username"].label = "Username or email"
+        for field in self.fields.values():
+            field.widget.attrs["class"] = "input w-full"
+
+
+class ChangePasswordForm(PasswordChangeForm):
+    """The stock password-change form, dressed in DaisyUI.
+
+    Django's form already checks the current password, matches the new one
+    against its confirmation, and runs ``AUTH_PASSWORD_VALIDATORS``.
+    """
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
         for field in self.fields.values():
             field.widget.attrs["class"] = "input w-full"
 

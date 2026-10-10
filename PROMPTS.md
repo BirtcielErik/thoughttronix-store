@@ -28,6 +28,104 @@ Each entry has this shape:
     - **Deviations:** recommendations overridden, follow-up questions asked
     - **Sideways:** failures, wrong turns, and how they were caught
 
+## 2026-10-10 — Account Security Center: implemented Phase 3 (change password), fixed uncolored success messages, and made console email readable
+
+### Prompts
+
+1. "@prd/account-security-center.md @plans/account-security-center.md
+   Implement Phase 3."
+2. "You did not utilize Django's PasswordChangeDoneView - can you explain
+   why it was not necessary?"
+3. "How can I manually verify this phase in the browser?"
+4. "The message flash for a successful password change should be displayed
+   as a badge that is more noticeable to users"
+5. "The email message displayed to the terminal has some added characters.
+   For example: Contact ThoughtTronix ri=ght away." The user rejected
+   Claude's diagnostic shell command and interrupted.
+6. The session-log prompt from the top of this file. The user rejected
+   Claude's edit to this file and interrupted.
+7. "How can we fix the issue with the added characters in the email text?"
+8. "yes, go ahead with option 2 and the line wrapping"
+9. The session-log prompt from the top of this file, again.
+
+### Summary
+
+- **Outcome:** Phase 3 was built and left uncommitted for the user.
+  - **Change password:** `ChangePasswordForm` is Django's
+    `PasswordChangeForm` with DaisyUI styling added. `ChangePasswordView`
+    subclasses Django's `PasswordChangeView` and lives at
+    `accounts:password_change`. It redirects to the hub with "Password
+    changed. You've been signed out everywhere else." Django itself keeps
+    the current session signed in and signs out the rest.
+  - **Notice email:** a module-level `send_password_changed_notice(user)`
+    in `accounts/views.py` sends the plain-text notice in
+    `templates/accounts/email/password_changed.txt`, and skips accounts
+    with no email. It is a function so that Phase 4 can reuse it.
+    `DEFAULT_FROM_EMAIL` is now
+    `ThoughtTronix <no-reply@thoughttronix.example>`.
+  - **Hub:** the Account Security page has a "Change password" button.
+  - **Tests:** fourteen tests in `accounts/test_security.py` cover every
+    Phase 3 acceptance criterion, including a second `Client` session
+    that is signed out after the change.
+  - **Success messages:** every success flash message in the store turned
+    out to have no color. `base.html` builds the class as
+    `alert-{{ message.tags }}`, so Tailwind never generated
+    `alert-success`. A
+    `@source inline("alert-{success,info,warning,error}")` line in
+    `assets/css/source.css` fixes it, and the CSS was rebuilt.
+  - **Readable console email:** `config/mail.py` adds
+    `ReadableConsoleBackend`, a subclass of Django's console backend that
+    prints From, To, Subject and the body as written, instead of the
+    quoted-printable encoding. `EMAIL_BACKEND` points to it. The notice
+    template's lines were wrapped under 78 characters.
+    `config/test_mail.py` checks that a long link prints whole, and the
+    notice test checks the line length. The PRD's and the plan's mail
+    notes were updated to match.
+  - **Final state:** full suite green at 321 tests, ruff clean.
+- **Deviations:**
+  - **Follow-up questions.** The user asked four: why
+    `PasswordChangeDoneView` was not used, how to verify the phase in the
+    browser, what the stray `=` characters were, and how to fix them. On
+    the done view, Claude's answer was that the PRD asks for a redirect
+    to the hub with a flash message, that the plan lists no "done" URL,
+    and that Django's default `success_url` would not resolve in the
+    `accounts:` namespace anyway.
+  - **Badge request not followed literally.** The user asked for the
+    success flash to be shown "as a badge". Claude judged the real
+    problem to be the missing alert color, and argued that a DaisyUI
+    badge is a small pill and would be less noticeable. It fixed the
+    color for every success message in the store instead, and offered a
+    password-specific badge. The user has not taken up that offer.
+  - **Email fix.** Claude offered two fixes: wrap the template's lines,
+    or add a readable console backend. It recommended the backend
+    together with the line wrapping, and the user chose exactly that.
+    The backend is a small departure from the PRD's "stays the console
+    backend". Claude said beforehand that it would note this in the PRD,
+    and did so.
+- **Sideways:**
+  - **Rejected diagnostic.** When the user first reported the `=`
+    characters, Claude went straight to a diagnostic shell command
+    without first explaining what it suspected. The user rejected it and
+    interrupted.
+  - **Rejected session log.** The first attempt at this log was also
+    rejected. That draft described the email bug as unresolved and
+    guessed that the em dash caused it.
+  - **Email cause confirmed.** When the check finally ran, with the
+    user's go-ahead, it showed that lines over 78 characters cause the
+    encoding and the em dash does not. Claude had suggested the em dash
+    as a possible cause in its explanation.
+  - **Stock backend checked.** Before trusting the new link test, Claude
+    confirmed that Django's stock backend really does break the link,
+    with `=3D` escapes.
+  - **Old color bug.** The missing `alert-success` color was in the store
+    before this session. Earlier phases missed it because the tests check
+    message text, not styling. The success-message test now checks that
+    the class is rendered.
+  - **Grading snapshot modified.** `db.sqlite3`, the committed grading
+    snapshot, shows as modified, probably from the manual browser check.
+    The walkthrough said to run `git restore db.sqlite3` afterward. The
+    file was left for the user to decide.
+
 ## 2026-10-10 — Account Security Center: implemented Phase 2 (sign in with username or email, and the hub), and fixed tests deleting media
 
 ### Prompts
