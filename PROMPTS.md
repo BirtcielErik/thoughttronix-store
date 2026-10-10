@@ -28,6 +28,121 @@ Each entry has this shape:
     - **Deviations:** recommendations overridden, follow-up questions asked
     - **Sideways:** failures, wrong turns, and how they were caught
 
+## 2026-10-08 — Account Security Center: turned the PRD into a phased plan
+
+### Prompts
+
+1. `/prd-to-plan @prd/account-security-center.md`
+2. "Merge 5 and 6, keep the rest as is" (answer to the three granularity
+   questions on the proposed six phases)
+3. *(Correction, after rejecting the first write of the plan file)* "Split
+   the hub and change password features into separate phases. Add the hub
+   feature into Phase 2."
+4. The session-log prompt from the top of this file.
+
+### Summary
+
+- **Outcome:** No code was changed. Wrote
+  `plans/account-security-center.md`. Its header records the durable
+  decisions: the `accounts` app, every URL path and name, the nullable
+  `email` with the `Lower("email")` constraint, the auth backend, the
+  signed-token payload, and the mail settings. The plan has five phases:
+  1. An email on every new account (stories 1–4, 43, 44)
+  2. Sign in with username or email, and the Security Center hub (stories
+     5–7, 17–19, 41)
+  3. Change password (stories 20–23, 38, 40, 41)
+  4. Forgot password (stories 8–16, 38, 39, 42)
+  5. Change email, confirmed by link (stories 24–37)
+- **Deviations:** Claude proposed six phases and asked whether to merge
+  request-email-change and confirm-email-change, noting the request phase
+  alone would email a link that leads nowhere. The user merged them. The
+  user first said to keep the hub and change password together, then
+  reversed that during the write: the hub was split off and folded into
+  the sign-in phase.
+- **Sideways:** The user rejected the first write of the plan file, which
+  still had the hub and change password as one phase, and asked for the
+  split instead. Moving the hub ahead of its actions left the "No email on
+  file — add one" prompt with no page to link to until Phase 5. The plan
+  handles this by having each phase add its own link to the hub, and
+  Claude flagged it to the user.
+
+## 2026-10-08 — Account Security Center: grilled the design, wrote the PRD
+
+### Prompts
+
+1. `/grill-me I want to add an Account Security Center. Customers should be
+   able to provide an email address during sign up, change their password,
+   and reset a forgotten password via email.`
+2. "A" (Q1: email required at sign-up)
+3. *(Follow-up)* "If the email field becomes nullable, does that affect our
+   decision from Question 1?"
+4. "A, and yes ignore capitalization" (Q2: unique in the database,
+   case-insensitive)
+5. "A" (Q3: case-insensitive `Lower("email")` unique constraint)
+6. "C" (Q4: customers can change email, confirmed with current password)
+7. "A" (Q5: Security Center hub plus one page per action)
+8. "A" (Q6: forgot-password always shows the same message)
+9. "A" (Q7: after reset, go to the login page; no auto-login)
+10. "B" (Q8: reset links expire after 1 hour)
+11. "C" (Q9: notify on email change to the old address, and on password
+    change)
+12. "A, but change the DEFAULT_FROM_EMAIL to the store-branded address"
+    (Q10: console email only)
+13. "C" (Q11: everyone uses the Security Center; forgot-password skips
+    superusers)
+14. "B" (Q12: sign in with username or email)
+15. "B" (Q13: no "@" in new usernames; "@" input is matched as an email
+    first)
+16. *(Correction to scope)* "Confirming a new email by link before it takes
+    effect should be added to the scope"
+17. "A" (Q14: pending email lives in a stateless signed token)
+18. "A" (Q15: sign-up email is not confirmed)
+19. "A" (Q16: notify the old address at confirmation only)
+20. "B" (Q17: link opens a page with a confirm button; works signed in or
+    not)
+21. `/to-prd`
+22. The session-log prompt from the top of this file.
+
+### Summary
+
+- **Outcome:** No code was changed. The 17 decisions were written up as
+  `prd/account-security-center.md`, which has 44 user stories.
+  - **Email:** required at sign-up and unique regardless of capitalization.
+    `User.email` becomes nullable, and a migration turns empty strings into
+    NULL first.
+  - **Security Center:** a hub page with change-password (Django's view)
+    and change-email (requires the current password, and takes effect only
+    after the customer clicks a link and presses a confirm button). The
+    link uses a stateless signed token.
+  - **Forgot password:** Django's reset views with a 1-hour link, the same
+    message whether or not the email is on file, and superusers skipped.
+  - **Notices:** emails on password change or reset, and to the old address
+    on an email change.
+  - **Sign-in:** username or email.
+  - **Mail:** console only, with a branded `DEFAULT_FROM_EMAIL`.
+- **Deviations:**
+  - **Q2:** chose database-enforced uniqueness (A) over my recommended
+    form-only check (B), after asking whether a nullable email undermined
+    Q1. It doesn't: Q1 is a form rule and nullability is a database rule.
+  - **Q10:** chose console-only mail (A) over my recommended
+    env-configurable SMTP (B), but kept the branded sender address.
+  - **Q11:** chose to skip superusers in forgot-password (C) over my
+    recommended "everyone" (A).
+  - **Q12:** chose username-or-email sign-in (B) over my recommended
+    username-only (A).
+  - **Scope:** after my wrap-up summary, moved email-change confirmation
+    from out of scope to in scope. That added Q14–Q17.
+- **Sideways:** Nothing failed. Two things to note:
+  - My first summary listed email confirmation as out of scope, and the
+    user corrected it. A step-two confirmation should arguably have been
+    asked about when Q4 was decided, not left in a closing list.
+  - The PRD includes a few defaults never asked as separate questions:
+    - the sign-in backend's inactive-user and timing safeguards;
+    - username changes being out of scope;
+    - no service module for the notices.
+
+    They were flagged to the user when the PRD was delivered.
+
 ## 2026-10-03 — Product images: implemented from the handoff
 
 ### Prompts
