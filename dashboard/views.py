@@ -49,6 +49,7 @@ class DashboardView(StaffRequiredMixin, TemplateView):
                     (point["revenue"] for point in series), default=Decimal("0")
                 ),
                 "top_products": queries.top_products(since),
+                "most_wishlisted": queries.most_wishlisted(),
                 # The all-time check: a quiet period is not an empty store.
                 "store_has_sales": queries.order_count() > 0,
             }

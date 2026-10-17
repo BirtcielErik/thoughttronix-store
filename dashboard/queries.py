@@ -1,19 +1,21 @@
 """Dashboard aggregations — the second of the codebase's two deep modules.
 
-The interface is the product: five functions that answer the questions
-leadership actually asks. Every one takes an optional ``since`` cutoff
-(``None`` means all time) and excludes cancelled orders — cancelled
-revenue is money the store never keeps.
+The interface is the product: functions that answer the questions
+leadership actually asks. The sales queries take an optional ``since``
+cutoff (``None`` means all time) and exclude cancelled orders — cancelled
+revenue is money the store never keeps. ``most_wishlisted`` is the
+exception: wishlists have no history, so it answers only "right now".
 """
 
 from datetime import date, datetime, timedelta
 from decimal import Decimal
 
-from django.db.models import DateField, DecimalField, F, QuerySet, Sum
+from django.db.models import Count, DateField, DecimalField, F, QuerySet, Sum
 from django.db.models.functions import TruncDate, TruncMonth, TruncWeek
 from django.utils import timezone
 
 from orders.models import Order, OrderItem
+from products.models import Product
 
 ZERO = Decimal("0.00")
 
@@ -104,6 +106,24 @@ def top_products(since: datetime | None = None, *, limit: int = 5) -> list[dict]
             units=Sum("quantity"),
         )
         .order_by("-revenue")[:limit]
+    )
+
+
+def most_wishlisted(*, limit: int = 5) -> list[Product]:
+    """The products on the most wishlists right now, most first.
+
+    Unlike every other query here, this takes no ``since``: wishlists
+    store only what is saved today, not a history of saves, so the
+    answer is always "right now". Every wishlist counts, staff members'
+    included, and unavailable products rank like any other — demand for
+    a sold-out product is the restock signal. Each product carries a
+    ``wishlist_count``; products on no wishlist are left out, and ties
+    go alphabetically.
+    """
+    return list(
+        Product.objects.annotate(wishlist_count=Count("wishlistitem"))
+        .filter(wishlist_count__gt=0)
+        .order_by("-wishlist_count", "name")[:limit]
     )
 
 

@@ -114,4 +114,46 @@
       </p>
     </div>
   {% endif %}
+
+  {# Outside the sales gate and blind to the period: wishlists are "now". #}
+  <div class="card mt-8 bg-base-100 shadow-md">
+    <div class="card-body">
+      <h3 class="card-title text-base">
+        Most wishlisted
+        <span class="text-sm font-normal opacity-60">right now, whatever the period</span>
+      </h3>
+      {% if most_wishlisted %}
+        <div class="overflow-x-auto">
+          <table class="table table-sm mt-2">
+            <thead>
+              <tr>
+                <th></th>
+                <th>Product</th>
+                <th class="text-right">Wishlists</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for product in most_wishlisted %}
+                <tr>
+                  <td class="opacity-50">{{ forloop.counter }}</td>
+                  <td>
+                    <a href="{% url 'products:manage_product_update' product.pk %}"
+                       class="link-hover">{{ product.name }}</a>
+                    {% if not product.is_available %}
+                      <span class="badge badge-warning badge-outline badge-sm ml-2">Unavailable</span>
+                    {% endif %}
+                  </td>
+                  <td class="text-right font-semibold tabular-nums">{{ product.wishlist_count }}</td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      {% else %}
+        <p class="py-10 text-center opacity-70">
+          Nothing wishlisted yet. Desire is still forming.
+        </p>
+      {% endif %}
+    </div>
+  </div>
 {% endblock %}

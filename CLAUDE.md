@@ -26,6 +26,9 @@ A server-rendered Django 6 storefront and back office. The PRD (`prd/core-platfo
   product — a fixed amount on a product comes off each unit; retired,
   never deleted), its rules (`Coupon.discount_for`), and
   the back-office Coupons tab. `orders` imports `coupons`, never the reverse.
+- `wishlist/` — `Wishlist` (one per user, created lazily like the cart) and
+  `WishlistItem`, the product-page wishlist button (an inclusion tag), and
+  the private wishlist page. Only `dashboard.queries` and `seed` import it.
 - `dashboard/` — the staff analytics dashboard
 - `PROMPTS.md` — the AI-usage log; append entries, never rewrite history
 - `templates/` — project-level templates (`base.html`); app templates live in

@@ -9,7 +9,8 @@ Demo logins (documented in the README):
     admin / admin123          superuser
     employee / employee123    staff, "Junior Thought Curator"
     marketing / marketing123  staff, "Director of Seasonal Persuasion"
-    customer / customer123    a plain customer, with order history and a live cart
+    customer / customer123    a plain customer, with order history, a live cart,
+                              and a wishlist
 """
 
 import random
@@ -29,6 +30,7 @@ from accounts.models import Address
 from coupons.models import Coupon
 from orders.models import Cart, Order, OrderItem
 from products.models import Category, Product, Tag
+from wishlist.models import Wishlist, WishlistItem
 
 TAGS = [
     "always listening",
@@ -490,6 +492,18 @@ CUSTOMER_CART = [
     ("whisper-alarm-clock", 1),
 ]
 
+# Demo wishlists: username -> product slugs, oldest save first. The
+# sold-out EchoPatch leads the dashboard's Most wishlisted panel — the
+# restock signal the panel exists to show.
+DEMO_WISHLISTS = {
+    "customer": ["echopatch", "mindsync-duo", "recallpro", "hush"],
+    "mwren": ["echopatch", "mindsync-duo", "moodset"],
+    "dcole": ["echopatch", "mindsync-duo", "recallpro"],
+    "tokafor": ["echopatch", "dreamweaver", "moodset"],
+    "lvasquez": ["soulsear-mark-i", "pulse-halo"],
+    "hpark": ["moodset"],
+}
+
 # Marketing's coupons, one of every status. Dates are days from the day
 # the seed runs, so each status stays true whenever it runs: (code,
 # description, kind, value, product slug or None, minimum spend or None,
@@ -621,6 +635,7 @@ class Command(BaseCommand):
         self._create_users()
         self._create_customer_addresses()
         self._create_customer_cart()
+        self._create_wishlists()
         self._create_coupons()
         self._create_orders()
 
@@ -633,6 +648,7 @@ class Command(BaseCommand):
                 f"{Address.objects.count()} saved addresses, "
                 f"{Coupon.objects.count()} coupons, "
                 f"{Order.objects.count()} orders, "
+                f"{WishlistItem.objects.count()} wishlist items, "
                 f"and a live cart for 'customer'."
             )
         )
@@ -743,6 +759,14 @@ class Command(BaseCommand):
         cart = Cart.for_user(customer)
         for slug, quantity in CUSTOMER_CART:
             cart.items.create(product=Product.objects.get(slug=slug), quantity=quantity)
+
+    def _create_wishlists(self):
+        """Demo wishlists; removed on the next wipe by the user cascade."""
+        User = get_user_model()
+        for username, slugs in DEMO_WISHLISTS.items():
+            wishlist = Wishlist.for_user(User.objects.get(username=username))
+            for slug in slugs:
+                wishlist.add(Product.objects.get(slug=slug))
 
     def _create_coupons(self):
         today = timezone.localdate()

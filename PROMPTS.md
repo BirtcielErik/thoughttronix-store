@@ -28,6 +28,71 @@ Each entry has this shape:
     - **Deviations:** recommendations overridden, follow-up questions asked
     - **Sideways:** failures, wrong turns, and how they were caught
 
+## 2026-10-17 — Wishlist: implemented Phase 3 (Most wishlisted panel and demo wishlists), with TDD
+
+### Prompts
+
+1. "/implement @prd/wishlist.md @plans/wishlist.md Implement Phase 3"
+2. "yes, go ahead" — accepting the three proposed TDD behaviors.
+3. "yes, go ahead" — accepting the RED test for behavior 1.
+4. "yes, go ahead" — accepting behavior 1's GREEN step and moving on.
+5. "yes, go ahead" — accepting behavior 2's test, which never went RED.
+6. "yes, go ahead" — accepting the RED test for behavior 3.
+7. "Carry on" — accepting behavior 3's GREEN step and the plan for the
+   rest of the phase.
+8. "Manual checks pass"
+
+### Summary
+
+- **Outcome:** Phase 3 was built, committed, and pushed.
+  - **TDD behaviors (approved up front):**
+    1. `most_wishlisted` ranks by wishlist count, highest first, respects
+       `limit`, and leaves out products on no wishlist.
+    2. It counts unavailable products and staff members' wishlists.
+    3. The panel shows wishlist demand on a store with no sales.
+  - **Query:** `most_wishlisted(*, limit=5)` in `dashboard/queries.py`
+    annotates products with `wishlist_count`, drops zeros, and orders by
+    count, then name. It takes no `since`; its docstring and the module
+    docstring say why.
+  - **Panel:** in `templates/dashboard/dashboard.html`, outside the
+    `store_has_sales` gate. Each row has rank, a name linked to
+    `products:manage_product_update`, the count, and an "Unavailable"
+    badge when applicable. The heading says "right now, whatever the
+    period". It has its own empty state.
+  - **Seed:** `DEMO_WISHLISTS` gives six demo customers (the `customer`
+    login among them) wishlists. Sold-out EchoPatch tops the panel, and
+    the recalled SoulSear Mark I is also saved. Reset relies on the user
+    and product cascades.
+  - **Tests:** 8 new tests in `dashboard/tests.py`: the three TDD tests
+    plus period independence, rendering with sales, the empty state,
+    links and the badge, and no usernames. The seed tests in
+    `products/tests.py` now also check wishlists and their idempotence.
+  - **Docs:** CLAUDE.md lists the `wishlist` app. `docs/ARCHITECTURE.md`
+    needed no change.
+  - **Final state:** full suite green at 407 tests, ruff check and
+    format clean.
+- **Deviations:**
+  - The user approved every proposal without changes.
+  - Behavior 3's test was narrowed from what was proposed: the panel's
+    empty state became its own normal test rather than a second
+    behavior inside the TDD test. Claude flagged this when showing the
+    RED test.
+  - After the TDD cycles, Claude added a name tie-break to
+    `most_wishlisted` so the seeded panel has a fixed order. The
+    behavior 1 test, which compares ties as a set, still passes.
+- **Sideways:**
+  - Behavior 2 never went RED: the behavior 1 query already met it.
+    Claude checked that the test can fail by briefly adding an
+    availability filter, then a staff exclusion, to the query. Both
+    failed the test, and the original query was restored.
+  - Behavior 3's GREEN step was a deliberately bare panel (names only);
+    the links, counts, badge and empty state came in the normal build.
+  - The manual walkthrough could not show the panel's empty state or the
+    before-first-sale view on seeded data, so it pointed to the tests
+    that cover them. Its last step was worded awkwardly.
+  - Claude did not click through the feature in a browser itself. The
+    user ran the walkthrough and reported that the checks pass.
+
 ## 2026-10-17 — Wishlist: implemented Phase 2 (my wishlist page), with TDD
 
 ### Prompts

@@ -9,10 +9,14 @@ from decimal import Decimal
 from http import HTTPStatus
 
 import pytest
+from django.contrib.auth import get_user_model
 from django.urls import reverse
 from django.utils import timezone
+from django.utils.text import slugify
 
 from orders.models import Order, OrderItem
+from products.models import Product
+from wishlist.models import Wishlist
 
 from . import queries
 
@@ -208,6 +212,68 @@ def test_top_products_respect_limit_cancellation_and_period(customer):
     assert [entry["product_name"] for entry in top] == ["Pulse Halo", "Whisper"]
 
 
+# --- Most wishlisted -----------------------------------------------------------
+
+
+def make_product(category, name, *, is_available=True):
+    return Product.objects.create(
+        name=name,
+        slug=slugify(name),
+        price=Decimal("10.00"),
+        category=category,
+        is_available=is_available,
+    )
+
+
+def wishlist_of(username, *products, is_staff=False):
+    """A fresh user whose wishlist holds ``products``."""
+    user = get_user_model().objects.create_user(username=username, is_staff=is_staff)
+    wishlist = Wishlist.for_user(user)
+    for product in products:
+        wishlist.add(product)
+    return wishlist
+
+
+def test_most_wishlisted_ranks_by_wishlist_count_and_respects_limit(category):
+    hush, whisper, halo, napcap = (
+        make_product(category, name)
+        for name in ["Hush", "Whisper", "Pulse Halo", "NapCap"]
+    )
+    make_product(category, "ThoughtPad Classic")  # on no wishlist
+    wishlist_of("ada", hush, whisper, halo)
+    wishlist_of("bea", hush, whisper)
+    wishlist_of("cy", hush, napcap)
+
+    everything = queries.most_wishlisted()
+    top_two = queries.most_wishlisted(limit=2)
+
+    assert [(p.name, p.wishlist_count) for p in everything[:2]] == [
+        ("Hush", 3),
+        ("Whisper", 2),
+    ]
+    assert {(p.name, p.wishlist_count) for p in everything[2:]} == {
+        ("Pulse Halo", 1),
+        ("NapCap", 1),
+    }
+    assert [p.name for p in top_two] == ["Hush", "Whisper"]
+
+
+def test_most_wishlisted_counts_unavailable_products_and_staff_wishlists(
+    category,
+):
+    echopatch = make_product(category, "EchoPatch", is_available=False)
+    hush = make_product(category, "Hush")
+    wishlist_of("ada", echopatch, hush)
+    wishlist_of("employee", echopatch, is_staff=True)
+
+    top = queries.most_wishlisted()
+
+    assert [(p.name, p.wishlist_count) for p in top] == [
+        ("EchoPatch", 2),
+        ("Hush", 1),
+    ]
+
+
 # --- The view ------------------------------------------------------------------
 
 
@@ -283,3 +349,84 @@ def test_a_quiet_period_is_not_the_empty_store(client, staff_user, customer):
 
     assert "No sales yet" not in page
     assert "No sales in this period" in page
+
+
+# --- The Most wishlisted panel -------------------------------------------------
+
+
+def test_the_panel_shows_wishlist_demand_before_the_first_sale(
+    client, staff_user, category
+):
+    wishlist_of("ada", make_product(category, "EchoPatch", is_available=False))
+    client.force_login(staff_user)
+
+    page = client.get(reverse("dashboard:index")).content.decode()
+
+    assert "No sales yet" in page
+    assert "Most wishlisted" in page
+    assert "EchoPatch" in page
+
+
+def test_the_panel_renders_alongside_sales(client, staff_user, customer, category):
+    make_order(customer, "100.00")
+    wishlist_of("ada", make_product(category, "Hush"))
+    client.force_login(staff_user)
+
+    page = client.get(reverse("dashboard:index")).content.decode()
+
+    assert "Total revenue" in page
+    assert "Most wishlisted" in page
+    assert "Hush" in page
+
+
+def test_the_panel_ignores_the_period(client, staff_user, customer, category):
+    make_order(customer, "100.00", days_ago=60)
+    wishlist_of("ada", make_product(category, "Hush"))
+    client.force_login(staff_user)
+
+    panels = [
+        client.get(reverse("dashboard:index"), {"period": period}).context[
+            "most_wishlisted"
+        ]
+        for period in ["30", "90", "all"]
+    ]
+
+    assert panels[0] == panels[1] == panels[2]
+    assert [(p.name, p.wishlist_count) for p in panels[0]] == [("Hush", 1)]
+
+
+def test_the_panel_has_an_empty_state(client, staff_user, customer, category):
+    make_order(customer, "100.00")
+    make_product(category, "Hush")  # in the catalog, on no wishlist
+    client.force_login(staff_user)
+
+    page = client.get(reverse("dashboard:index")).content.decode()
+
+    assert "Nothing wishlisted yet" in page
+    assert "Hush" not in page
+
+
+def test_panel_rows_link_to_the_edit_page_and_flag_unavailable(
+    client, staff_user, category
+):
+    echopatch = make_product(category, "EchoPatch", is_available=False)
+    hush = make_product(category, "Hush")
+    wishlist_of("ada", echopatch, hush)
+    client.force_login(staff_user)
+
+    page = client.get(reverse("dashboard:index")).content.decode()
+
+    assert reverse("products:manage_product_update", args=[echopatch.pk]) in page
+    assert reverse("products:manage_product_update", args=[hush.pk]) in page
+    assert page.count("Unavailable") == 1
+    assert "Nothing wishlisted yet" not in page
+
+
+def test_the_panel_never_names_who_wishlisted(client, staff_user, category):
+    wishlist_of("quillon_secretwish", make_product(category, "Hush"))
+    client.force_login(staff_user)
+
+    page = client.get(reverse("dashboard:index")).content.decode()
+
+    assert "Hush" in page
+    assert "quillon_secretwish" not in page
