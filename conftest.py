@@ -13,6 +13,7 @@ from accounts.models import Address
 from coupons.models import Coupon
 from orders.models import Cart, CartItem
 from products.models import Category, Product, Tag
+from wishlist.models import Wishlist
 
 
 @pytest.fixture(autouse=True)
@@ -107,6 +108,11 @@ def cart(customer):
 @pytest.fixture
 def cart_item(cart, product):
     return CartItem.objects.create(cart=cart, product=product, quantity=2)
+
+
+@pytest.fixture
+def wishlist(customer):
+    return Wishlist.for_user(customer)
 
 
 @pytest.fixture

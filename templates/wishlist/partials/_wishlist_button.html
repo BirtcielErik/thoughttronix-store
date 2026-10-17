@@ -1,0 +1,29 @@
+{# The wishlist toggle on the product page, in all its states. Rendered by #}
+{# the wishlist_button tag on first load and by the add/remove views on #}
+{# every HTMX swap. Needs product, saved, and user. #}
+{% if not user.is_authenticated %}
+  {# Anonymous visitors are prompted to sign in — a plain link, no HTMX. #}
+  <a href="{% url 'accounts:login' %}?next={{ product.get_absolute_url|urlencode }}"
+     class="btn btn-outline btn-sm">
+    <span aria-hidden="true">♡</span> Add to wishlist
+  </a>
+{% elif saved %}
+  <div class="tooltip" data-tip="Remove from your wishlist">
+    <button
+      hx-post="{% url 'wishlist:remove' product.pk %}"
+      hx-target="closest .tooltip"
+      hx-swap="outerHTML"
+      aria-pressed="true"
+      class="btn btn-secondary btn-sm">
+      <span aria-hidden="true">♥</span> On your wishlist
+    </button>
+  </div>
+{% else %}
+  <button
+    hx-post="{% url 'wishlist:add' product.pk %}"
+    hx-swap="outerHTML"
+    aria-pressed="false"
+    class="btn btn-outline btn-sm">
+    <span aria-hidden="true">♡</span> Add to wishlist
+  </button>
+{% endif %}

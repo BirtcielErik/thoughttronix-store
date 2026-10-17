@@ -28,6 +28,80 @@ Each entry has this shape:
     - **Deviations:** recommendations overridden, follow-up questions asked
     - **Sideways:** failures, wrong turns, and how they were caught
 
+## 2026-10-17 — Wishlist: implemented Phase 1 (save a product from its page)
+
+### Prompts
+
+1. "@prd/wishlist.md @plans/wishlist.md Implement Phase 1."
+2. "How can I manually verify this feature in the browser?"
+3. The session-log prompt from the top of this file.
+
+### Summary
+
+- **Outcome:** Phase 1 was built and left uncommitted for the user.
+  - **App:** a new `wishlist` app, added to `INSTALLED_APPS` and mounted
+    at `""` in `config/urls.py`. Only the templates and tests import it
+    so far; the catalog app's Python does not.
+  - **Models:** `Wishlist` (one-to-one with the user, created lazily by
+    `for_user`, like `Cart`) with `add(product)` (get-or-create, so a
+    repeat changes nothing) and `remove(product)` (a no-op when the
+    product isn't saved). `WishlistItem` holds the wishlist, the product
+    (cascading delete) and `added_at`. Each wishlist–product pair is
+    unique, and items are ordered newest first (`-added_at`, then `-pk`
+    for ties). Migration `wishlist/0001_initial`.
+  - **Views and URLs:** `AddToWishlistView` (`wishlist:add`) and
+    `RemoveFromWishlistView` (`wishlist:remove`), sharing a
+    `WishlistButtonView` base in the style of `CartItemActionView`.
+    Sign-in required, POST only (GET gets a 405), keyed by product pk.
+    They look the product up among all products, not `available()`, and
+    re-render the button partial.
+  - **Button:** a `{% wishlist_button product %}` inclusion tag in
+    `wishlist/templatetags/wishlist_extras.py`, rendering
+    `templates/wishlist/partials/_wishlist_button.html`. The partial has
+    three states: a sign-in link with `next` set to the product URL
+    (signed out), an outline "♡ Add to wishlist" button (not saved), and a
+    secondary "♥ On your wishlist" button inside a DaisyUI tooltip,
+    "Remove from your wishlist" (saved). The tag checks only that one
+    product and creates no wishlist just by viewing a page. It sits
+    beside add-to-cart on the product detail page, unavailable products
+    included.
+  - **Tests:** a `wishlist` fixture in `conftest.py` and 25 test cases
+    (parametrized cases counted) in `wishlist/tests.py`. They cover every
+    Phase 1 acceptance criterion plus two extras: one user's saved state
+    never shows on another user's button, and viewing a product page
+    creates no wishlist.
+  - **Final state:** full suite green at 386 tests, ruff check and
+    format clean.
+- **Deviations:**
+  - **Judgment call on `aria-pressed`.** The plan's acceptance line can
+    be read as wanting `aria-pressed` on all three button states. Claude
+    put it only on the two signed-in buttons, because `aria-pressed` is
+    not valid on a link, and said so in its report. The hearts are
+    wrapped in `aria-hidden` spans so screen readers read only the words.
+  - **Follow-up question.** The user asked how to verify the feature in
+    the browser. Claude gave a walkthrough using the seeded `customer`
+    and `employee` accounts:
+    - the signed-out redirect and return on EchoPatch (unavailable)
+    - saving and removing while watching the Network tab for single
+      POSTs and no page reload
+    - the tooltip, and the saved state surviving a refresh
+    - a two-tab stale-page check that a repeated click never flips the
+      state
+    - per-user privacy and staff wishlists
+    - `aria-pressed` in DevTools
+
+    It flagged that the dev database needs `migrate` first and that a
+    missing tooltip probably means stale compiled CSS.
+- **Sideways:**
+  - Nothing failed. The first test run was green and ruff was clean.
+  - Claude did not run `migrate` on the dev database or click through
+    the feature in a browser itself. Verification was the test suite
+    plus the walkthrough handed to the user.
+  - Writing this log, Claude's first edit of PROMPTS.md failed because
+    it copied the template block's indentation wrong. Rereading the
+    file showed the mistake. Claude also caught that its draft
+    overcounted the new tests (26 instead of 25) before saving.
+
 ## 2026-10-10 — Account Security Center: implemented Phase 5 (change email, confirmed by link)
 
 ### Prompts
