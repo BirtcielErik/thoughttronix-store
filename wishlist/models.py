@@ -32,6 +32,12 @@ class Wishlist(models.Model):
         self.items.filter(product=product).delete()
 
 
+class WishlistItemQuerySet(models.QuerySet):
+    def for_user(self, user):
+        """The user's saved items, ready to render (newest first)."""
+        return self.filter(wishlist__user=user).select_related("product__category")
+
+
 class WishlistItem(models.Model):
     """One saved product; the wishlist–product pair is unique.
 
@@ -44,6 +50,8 @@ class WishlistItem(models.Model):
     )
     product = models.ForeignKey(Product, on_delete=models.CASCADE)
     added_at = models.DateTimeField(auto_now_add=True)
+
+    objects = WishlistItemQuerySet.as_manager()
 
     class Meta:
         ordering = ["-added_at", "-pk"]

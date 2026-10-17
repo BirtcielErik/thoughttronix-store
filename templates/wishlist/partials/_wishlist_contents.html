@@ -1,0 +1,63 @@
+{% load humanize cart_extras %}
+{# The wishlist's items — swapped whole into #wishlist-contents by the #}
+{# removal endpoint. Needs items; cart_quantities comes from the cart #}
+{# context processor. #}
+{% if items %}
+  <div class="overflow-x-auto rounded-box bg-base-100 shadow-md">
+    <table class="table">
+      <thead>
+        <tr>
+          <th><span class="sr-only">Image</span></th>
+          <th>Product</th>
+          <th>Price</th>
+          <th>Availability</th>
+          <th><span class="sr-only">Cart</span></th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for item in items %}
+          <tr>
+            <td class="w-16">
+              <img src="{{ item.product.display_image }}" alt=""
+                   width="48" height="48" loading="lazy"
+                   class="h-12 w-12 rounded object-cover object-top" />
+            </td>
+            <td>
+              <a href="{{ item.product.get_absolute_url }}" class="link-hover font-semibold">
+                {{ item.product.name }}
+              </a>
+            </td>
+            <td>${{ item.product.price|intcomma }}</td>
+            <td>
+              {% if item.product.is_available %}
+                <span class="badge badge-success badge-outline">In stock</span>
+              {% else %}
+                <span class="badge badge-warning badge-outline">Unavailable</span>
+              {% endif %}
+            </td>
+            <td>
+              {% include "orders/partials/_add_button.html" with product=item.product in_cart=cart_quantities|quantity_of:item.product.pk %}
+            </td>
+            <td class="text-right">
+              <button class="btn btn-ghost btn-sm text-error"
+                      hx-post="{% url 'wishlist:remove_item' item.pk %}"
+                      hx-target="#wishlist-contents">
+                Remove
+              </button>
+            </td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+{% else %}
+  <div class="py-16 text-center">
+    <p class="text-5xl">♡</p>
+    <p class="mt-4 text-xl font-semibold">Your wishlist is empty</p>
+    <p class="mt-2 opacity-70">Some thoughts are worth saving for later.</p>
+    <a href="{% url 'products:catalog' %}" class="btn btn-primary btn-sm mt-6">
+      Browse the catalog
+    </a>
+  </div>
+{% endif %}

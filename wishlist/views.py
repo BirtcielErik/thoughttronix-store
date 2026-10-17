@@ -8,10 +8,36 @@ Both re-render the product page's wishlist button partial.
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.shortcuts import get_object_or_404, render
 from django.views import View
+from django.views.generic import ListView
 
 from products.models import Product
 
-from .models import Wishlist
+from .models import Wishlist, WishlistItem
+
+
+class WishlistView(LoginRequiredMixin, ListView):
+    """The signed-in customer's wishlist page."""
+
+    template_name = "wishlist/wishlist.html"
+    context_object_name = "items"
+
+    def get_queryset(self):
+        return WishlistItem.objects.for_user(self.request.user)
+
+
+class RemoveWishlistItemView(LoginRequiredMixin, View):
+    """HTMX: remove a line from the wishlist page; the contents re-render.
+
+    The item is fetched through the owner's wishlist — never by bare pk —
+    so another customer's item is a 404.
+    """
+
+    def post(self, request, pk):
+        items = WishlistItem.objects.for_user(request.user)
+        get_object_or_404(items, pk=pk).delete()
+        return render(
+            request, "wishlist/partials/_wishlist_contents.html", {"items": items}
+        )
 
 
 class WishlistButtonView(LoginRequiredMixin, View):

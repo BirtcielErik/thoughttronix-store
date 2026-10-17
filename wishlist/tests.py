@@ -1,8 +1,10 @@
+from datetime import timedelta
 from http import HTTPStatus
 
 import pytest
 from django.db import IntegrityError
 from django.urls import reverse
+from django.utils import timezone
 
 from .models import Wishlist, WishlistItem
 
@@ -228,3 +230,178 @@ def test_staff_save_and_remove_like_customers(client, staff_user, product):
 
     client.post(reverse("wishlist:remove", kwargs={"pk": product.pk}))
     assert not staff_user.wishlist.items.exists()
+
+
+# --- The wishlist page -------------------------------------------------------
+
+
+def wishlist_page(client):
+    return client.get(reverse("wishlist:list")).content.decode()
+
+
+def test_page_lists_only_the_users_items_newest_first(
+    client, customer, wishlist, product, unavailable_product, category, staff_user
+):
+    # Saved first but backdated, so only added_at (not pk) orders them.
+    newer = wishlist.add(product)
+    older = wishlist.add(unavailable_product)
+    WishlistItem.objects.filter(pk=older.pk).update(
+        added_at=timezone.now() - timedelta(days=1)
+    )
+    someone_elses = category.products.create(
+        name="Cortex Cuff", slug="cortex-cuff", price=1
+    )
+    Wishlist.for_user(staff_user).add(someone_elses)
+    client.force_login(customer)
+
+    page = wishlist_page(client)
+
+    assert newer.product.name in page
+    assert older.product.name in page
+    assert page.index(newer.product.name) < page.index(older.product.name)
+    assert "Cortex Cuff" not in page
+
+
+def test_only_available_products_are_offered_for_the_cart(
+    client, customer, wishlist, product, unavailable_product
+):
+    wishlist.add(product)
+    client.force_login(customer)
+
+    page = wishlist_page(client)
+
+    assert reverse("orders:add", kwargs={"pk": product.pk}) in page
+    assert "Unavailable" not in page
+
+    wishlist.add(unavailable_product)
+
+    page = wishlist_page(client)
+
+    assert "Unavailable" in page
+    assert reverse("orders:add", kwargs={"pk": unavailable_product.pk}) not in page
+
+
+def test_removing_the_last_item_returns_the_empty_state(
+    client, customer, wishlist, product
+):
+    item = wishlist.add(product)
+    client.force_login(customer)
+
+    response = client.post(reverse("wishlist:remove_item", kwargs={"pk": item.pk}))
+
+    assert response.status_code == HTTPStatus.OK
+    page = response.content.decode()
+    assert "<html" not in page
+    assert "Your wishlist is empty" in page
+    assert f'href="{reverse("products:catalog")}"' in page
+    assert not wishlist.items.exists()
+
+
+def test_navbar_links_the_wishlist_for_signed_in_users_only(client, customer):
+    link = f'href="{reverse("wishlist:list")}"'
+    catalog = reverse("products:catalog")
+
+    assert link not in client.get(catalog).content.decode()
+
+    client.force_login(customer)
+    assert link in client.get(catalog).content.decode()
+
+
+def test_anonymous_visitor_to_the_page_is_sent_to_sign_in(client):
+    response = client.get(reverse("wishlist:list"))
+
+    assert response.status_code == HTTPStatus.FOUND
+    assert reverse("accounts:login") in response.url
+
+
+def test_page_shows_each_items_details(client, customer, wishlist, product):
+    item = wishlist.add(product)
+    client.force_login(customer)
+
+    page = wishlist_page(client)
+
+    assert f'src="{product.display_image}"' in page
+    assert f'href="{product.get_absolute_url()}"' in page
+    assert "$349.99" in page
+    assert "In stock" in page
+    assert reverse("wishlist:remove_item", kwargs={"pk": item.pk}) in page
+
+
+def test_empty_wishlist_page_shows_the_empty_state(client, customer):
+    client.force_login(customer)
+
+    page = wishlist_page(client)
+
+    assert "Your wishlist is empty" in page
+    assert "<table" not in page
+
+
+def test_adding_to_the_cart_leaves_the_item_on_the_wishlist(
+    client, customer, wishlist, product
+):
+    wishlist.add(product)
+    client.force_login(customer)
+
+    client.post(reverse("orders:add", kwargs={"pk": product.pk}))
+
+    assert customer.cart.items.filter(product=product).exists()
+    assert wishlist.items.filter(product=product).exists()
+    assert "In cart (1)" in wishlist_page(client)
+
+
+def test_removing_an_unavailable_item_returns_the_remaining_contents(
+    client, customer, wishlist, product, unavailable_product
+):
+    wishlist.add(product)
+    item = wishlist.add(unavailable_product)
+    client.force_login(customer)
+
+    response = client.post(reverse("wishlist:remove_item", kwargs={"pk": item.pk}))
+
+    assert response.status_code == HTTPStatus.OK
+    page = response.content.decode()
+    assert "<html" not in page
+    assert product.name in page
+    assert unavailable_product.name not in page
+    assert list(wishlist.items.values_list("product", flat=True)) == [product.pk]
+
+
+def test_removing_another_customers_item_404s(client, wishlist, product, staff_user):
+    item = wishlist.add(product)
+    client.force_login(staff_user)
+
+    response = client.post(reverse("wishlist:remove_item", kwargs={"pk": item.pk}))
+
+    assert response.status_code == HTTPStatus.NOT_FOUND
+    assert WishlistItem.objects.filter(pk=item.pk).exists()
+
+
+def test_remove_item_redirects_anonymous_visitors(client, wishlist, product):
+    item = wishlist.add(product)
+
+    response = client.post(reverse("wishlist:remove_item", kwargs={"pk": item.pk}))
+
+    assert response.status_code == HTTPStatus.FOUND
+    assert reverse("accounts:login") in response.url
+    assert WishlistItem.objects.filter(pk=item.pk).exists()
+
+
+def test_remove_item_refuses_get(client, customer, wishlist, product):
+    item = wishlist.add(product)
+    client.force_login(customer)
+
+    response = client.get(reverse("wishlist:remove_item", kwargs={"pk": item.pk}))
+
+    assert response.status_code == HTTPStatus.METHOD_NOT_ALLOWED
+    assert WishlistItem.objects.filter(pk=item.pk).exists()
+
+
+def test_deleting_a_product_removes_it_from_every_wishlist(
+    wishlist, product, staff_user
+):
+    wishlist.add(product)
+    Wishlist.for_user(staff_user).add(product)
+
+    product.delete()
+
+    assert not WishlistItem.objects.exists()

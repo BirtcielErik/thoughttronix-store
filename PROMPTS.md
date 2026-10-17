@@ -28,6 +28,86 @@ Each entry has this shape:
     - **Deviations:** recommendations overridden, follow-up questions asked
     - **Sideways:** failures, wrong turns, and how they were caught
 
+## 2026-10-17 — Wishlist: implemented Phase 2 (my wishlist page), with TDD
+
+### Prompts
+
+1. "/tdd @prd/wishlist.md @plans/wishlist.md Implement Phase 2."
+2. "Approved" — accepting the three proposed TDD behaviors.
+3. "Approve" — accepting the RED test for behavior 1.
+4. "It implements the behavior, move on"
+5. "Approve" — accepting the RED test for behavior 2.
+6. "It implements the behavior, move on"
+7. "Approve" — accepting the RED test for behavior 3.
+8. "It implements the behavior, move on"
+9. "How can I manually verify this phase in the browser?"
+10. The session-log prompt from the top of this file.
+
+### Summary
+
+- **Outcome:** Phase 2 was built and left uncommitted for the user.
+  - **TDD behaviors (approved up front):**
+    1. The page lists only the signed-in user's items, newest first.
+    2. Only available products are offered for the cart; unavailable
+       ones are marked "Unavailable".
+    3. Removing the last item returns the empty state with a catalog
+       link.
+
+    Owner-scoped 404s, sign-in/POST guards, and cascade on delete were
+    left out of TDD because existing tested patterns (the cart's
+    `CartItemActionView`, the Phase 1 endpoints) already settled them.
+  - **Navbar:** a "Wishlist" link beside "Orders" in `templates/base.html`,
+    signed-in users only, no badge.
+  - **Query:** `WishlistItemQuerySet.for_user(user)` in
+    `wishlist/models.py`: owner-scoped, `select_related` on product and
+    category, newest first via the existing `Meta.ordering`. Extracted
+    during behavior 3's scaffolding so the page and the removal view
+    share it.
+  - **Views and URLs:** `WishlistView` (`wishlist:list`, a `ListView`)
+    and `RemoveWishlistItemView` (`wishlist:remove_item`, POST only),
+    which fetches the item through `for_user` and re-renders the
+    contents partial, mirroring the cart's line removal.
+  - **Templates:** `templates/wishlist/wishlist.html` and
+    `templates/wishlist/partials/_wishlist_contents.html`. Each table
+    row has a thumbnail, linked name, price, an "In stock"/"Unavailable"
+    badge (same wording as the detail page), the existing
+    `_add_button.html` reused as-is (fed by `cart_quantities`), and a
+    Remove button. The designed empty state matches the cart's.
+  - **Tests:** 13 new tests in `wishlist/tests.py`: the three TDD tests
+    and ten normal ones covering every remaining acceptance criterion.
+  - **Final state:** full suite green at 399 tests, ruff check and
+    format clean.
+- **Deviations:**
+  - The user approved every proposal (the behavior list, each RED test,
+    each GREEN step) without changes.
+  - **Follow-up question.** The user asked how to verify the phase in
+    the browser. Claude gave a walkthrough using the seeded `customer`
+    and `employee` accounts:
+    - the signed-out redirect
+    - the empty state
+    - filling the wishlist from product pages, with EchoPatch as the
+      unavailable product
+    - order and row contents
+    - add-to-cart leaving the item in place
+    - HTMX removal down to the empty state
+    - per-user privacy and product deletion
+    - phone width
+
+    It noted that `seed` doesn't create wishlists until Phase 3.
+- **Sideways:**
+  - Behavior 1's first draft test could not tell `added_at` ordering
+    from insertion order, since the older item also had the lower pk.
+    Claude caught this at the first RED run, before showing the test.
+    It backdated the item saved second so that only `added_at` ordering
+    passes.
+  - The first full-suite run took about four minutes, overran the
+    120-second foreground timeout, and moved to the background. Claude
+    loaded the Monitor tool needlessly and then simply waited for the
+    completion notice. The later run used a longer timeout.
+  - Claude did not click through the feature in a browser itself.
+    Verification was the test suite plus the walkthrough handed to the
+    user.
+
 ## 2026-10-17 — Wishlist: implemented Phase 1 (save a product from its page)
 
 ### Prompts
