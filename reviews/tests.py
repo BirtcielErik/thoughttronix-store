@@ -1,3 +1,4 @@
+import html
 import re
 from datetime import timedelta
 from decimal import Decimal
@@ -907,3 +908,258 @@ def test_catalog_cards_show_average_and_count(
     # The Cortex Cuff is listed, but with no reviews it shows no stars.
     assert "Cortex Cuff" in page
     assert page.count("out of 5 stars") == 1
+
+
+# --- The back-office Reviews tab ----------------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("viewer", "expected_status"),
+    [("visitor", 302), ("customer", 403), ("staff_user", 200)],
+)
+def test_reviews_tab_is_staff_only(request, db, client, viewer, expected_status):
+    if viewer != "visitor":
+        client.force_login(request.getfixturevalue(viewer))
+
+    response = client.get(reverse("reviews:manage_reviews"))
+
+    assert response.status_code == expected_status
+    if viewer == "visitor":
+        assert response.url.startswith(reverse("accounts:login"))
+
+
+@pytest.fixture
+def one_review_per_rating(product):
+    """Five reviews of the product, one at each star rating."""
+    for stars in range(1, 6):
+        author = get_user_model().objects.create_user(
+            username=f"reviewer{stars}", password="x"
+        )
+        Review.objects.create(
+            author=author, product=product, rating=stars, comment=f"{stars} stars."
+        )
+
+
+@pytest.mark.parametrize(
+    ("rating", "expected"),
+    [
+        ("1", [1]),
+        ("3", [3]),
+        ("5", [5]),
+        ("", [5, 4, 3, 2, 1]),
+        ("0", [5, 4, 3, 2, 1]),
+        ("6", [5, 4, 3, 2, 1]),
+        ("abc", [5, 4, 3, 2, 1]),
+    ],
+)
+def test_reviews_tab_filters_by_rating(
+    client, staff_user, one_review_per_rating, rating, expected
+):
+    client.force_login(staff_user)
+
+    response = client.get(reverse("reviews:manage_reviews"), {"rating": rating})
+
+    assert [review.rating for review in response.context["reviews"]] == expected
+
+
+def test_reviews_tab_is_active_on_its_page(client, staff_user):
+    client.force_login(staff_user)
+
+    page = client.get(reverse("reviews:manage_reviews")).content.decode()
+
+    assert re.search(
+        rf'class="tab tab-active"\s+href="{reverse("reviews:manage_reviews")}"', page
+    )
+    assert page.count("tab-active") == 1
+
+
+def test_reviews_tab_is_newest_first_20_per_page(client, staff_user, product):
+    now = timezone.now()
+    for age in range(21):
+        author = get_user_model().objects.create_user(
+            username=f"reviewer{age}", password="x"
+        )
+        Review.objects.create(
+            author=author,
+            product=product,
+            rating=4,
+            comment=f"{age} days old.",
+            created_at=now - timedelta(days=age),
+        )
+    client.force_login(staff_user)
+    url = reverse("reviews:manage_reviews")
+
+    first = client.get(url).context["reviews"]
+    second = client.get(url, {"page": 2}).context["reviews"]
+
+    assert [review.comment for review in first] == [
+        f"{age} days old." for age in range(20)
+    ]
+    assert [review.comment for review in second] == ["20 days old."]
+
+
+def test_reviews_tab_row_shows_who_wrote_what_about_what(
+    client, staff_user, product, nova_review
+):
+    client.force_login(staff_user)
+
+    page = client.get(reverse("reviews:manage_reviews")).content.decode()
+
+    assert f'<tr id="review-{nova_review.pk}"' in page
+    assert f'href="{product.get_absolute_url()}"' in page
+    assert product.name in page
+    assert "Nova Kepler" in page
+    assert ">nova<" in page
+    assert 'aria-label="5 out of 5 stars"' in page
+    assert "Finally, someone listens." in page
+    assert nova_review.created_at.strftime("%b") in page
+    # Edit and delete stay in the back office, and delete confirms first.
+    assert backoffice("edit", nova_review) in page
+    assert backoffice("delete", nova_review) in page
+    assert "hx-confirm=" in page
+
+
+def test_reviews_tab_empty_state(client, staff_user):
+    client.force_login(staff_user)
+
+    page = client.get(reverse("reviews:manage_reviews")).content.decode()
+
+    assert "No reviews yet" in page
+    assert "<table" not in page
+
+
+def test_reviews_tab_empty_state_for_a_filter_that_matches_nothing(
+    client, staff_user, nova_review
+):
+    client.force_login(staff_user)
+
+    page = client.get(
+        reverse("reviews:manage_reviews"), {"rating": "1"}
+    ).content.decode()
+
+    assert "No 1-star reviews" in page
+    assert "Show all reviews" in page
+    assert "<table" not in page
+
+
+def backoffice(name, review):
+    """A review view's URL as a back-office row calls it."""
+    return f"{reverse(f'reviews:{name}', args=[review.pk])}?surface=backoffice"
+
+
+def test_backoffice_edit_returns_the_comment_only_row_form(
+    client, staff_user, nova_review
+):
+    client.force_login(staff_user)
+
+    response = client.get(backoffice("edit", nova_review))
+
+    page = response.content.decode()
+    assert page.lstrip().startswith(f'<tr id="review-{nova_review.pk}"')
+    assert f'hx-post="{backoffice("edit", nova_review)}"' in page
+    assert 'name="comment"' in page
+    assert 'name="rating"' not in page
+    assert "Finally, someone listens." in page
+    assert backoffice("cancel", nova_review) in page
+
+
+def test_backoffice_save_returns_the_row_and_ignores_the_rating(
+    client, staff_user, nova_review
+):
+    client.force_login(staff_user)
+
+    response = client.post(
+        backoffice("edit", nova_review),
+        {"rating": 1, "comment": "[Removed by moderator]"},
+    )
+
+    nova_review.refresh_from_db()
+    assert (nova_review.rating, nova_review.comment) == (5, "[Removed by moderator]")
+    page = response.content.decode()
+    assert page.lstrip().startswith(f'<tr id="review-{nova_review.pk}"')
+    assert "[Removed by moderator]" in page
+    assert "<form" not in page
+    assert "hx-swap-oob" not in page
+
+
+def test_invalid_backoffice_save_returns_the_row_form_and_changes_nothing(
+    client, staff_user, nova_review
+):
+    client.force_login(staff_user)
+
+    response = client.post(backoffice("edit", nova_review), {"comment": " "})
+
+    page = response.content.decode()
+    assert page.lstrip().startswith(f'<tr id="review-{nova_review.pk}"')
+    assert "Write a comment." in page
+    nova_review.refresh_from_db()
+    assert nova_review.comment == "Finally, someone listens."
+
+
+def test_backoffice_cancel_returns_the_row_unchanged(client, staff_user, nova_review):
+    client.force_login(staff_user)
+
+    response = client.get(backoffice("cancel", nova_review))
+
+    page = response.content.decode()
+    assert page.lstrip().startswith(f'<tr id="review-{nova_review.pk}"')
+    assert "Finally, someone listens." in page
+    assert "<form" not in page
+
+
+def test_backoffice_delete_removes_the_review_and_refreshes_the_count(
+    client, customer, staff_user, product, nova_review
+):
+    Review.objects.create(author=customer, product=product, rating=2, comment="Meh.")
+    client.force_login(staff_user)
+
+    response = client.post(backoffice("delete", nova_review))
+
+    assert response.status_code == 200
+    assert not Review.objects.filter(pk=nova_review.pk).exists()
+    page = response.content.decode()
+    # The heading alone, out-of-band, so the row is swapped for nothing.
+    assert re.fullmatch(
+        r'\s*<h2 id="review-count"[^>]*hx-swap-oob="true".*', page, re.S
+    )
+    assert re.search(r">\s*1 review\s*<", page)
+
+
+def delete_url_in(page, review):
+    """The delete URL a rendered row posts to, as a request would send it."""
+    delete = reverse("reviews:delete", args=[review.pk])
+    return html.unescape(re.search(rf'hx-post="({delete}[^"]*)"', page)[1])
+
+
+def test_backoffice_delete_recounts_within_the_rating_filter(
+    client, staff_user, one_review_per_rating, nova_review
+):
+    # Six reviews: one at each rating, plus Nova's 5.
+    client.force_login(staff_user)
+    listing = client.get(
+        reverse("reviews:manage_reviews"), {"rating": "5"}
+    ).content.decode()
+    # A row re-rendered by edit, save, or cancel keeps the page's filter too.
+    row = client.get(
+        reverse("reviews:cancel", args=[nova_review.pk]),
+        {"surface": "backoffice", "rating": "5"},
+    ).content.decode()
+    assert "rating=5" in delete_url_in(row, nova_review)
+
+    response = client.post(delete_url_in(listing, nova_review))
+
+    assert re.search(r">\s*1 review\s*<", response.content.decode())
+
+
+def test_customers_cannot_use_the_backoffice_surface(client, customer, product):
+    # A customer's own review answers on the product page, whatever the URL says.
+    buy(customer, product)
+    review = Review.objects.create(
+        author=customer, product=product, rating=4, comment="Mine."
+    )
+    client.force_login(customer)
+
+    page = client.get(backoffice("cancel", review)).content.decode()
+
+    assert f'<article id="review-{review.pk}"' in page
+    assert "<tr" not in page

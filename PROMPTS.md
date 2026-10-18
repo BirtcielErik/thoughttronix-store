@@ -28,6 +28,69 @@ Each entry has this shape:
     - **Deviations:** recommendations overridden, follow-up questions asked
     - **Sideways:** failures, wrong turns, and how they were caught
 
+## 2026-10-18 — Customer reviews: implemented Phase 5 (back-office Reviews tab), with TDD
+
+### Prompts
+
+1. "/implement @prd/reviews.md @plans/reviews.md Implement Phase 5"
+2. "What is the staff gate?" — a follow-up on a term in Claude's list of
+   what would be tested normally.
+3. "Remove 2 and 3 and add the staff gate to the TDD pool" — keeping the
+   rating filter, dropping the back-office save and delete behaviors, and
+   promoting the staff gate.
+4. "Approved, make it pass" — accepting the RED test for the staff gate.
+5. "Yes, go ahead with the rating filter" — accepting its GREEN step.
+6. "Approved, make it pass" — accepting the RED test for the rating filter.
+7. "Yes, go ahead with the rest of the phase" — accepting its GREEN step.
+8. "The number of reviews header should automatically update when a review
+   is deleted"
+9. "Manual checks pass, go ahead and finish the phase"
+
+### Summary
+
+- **Outcome:** Phase 5 was built, committed, and pushed.
+  - **TDD behaviors (two, after the user's change):**
+    1. The staff gate: a visitor is redirected to sign-in, a customer gets
+       a 403, and staff get the page. `StaffRequiredMixin` made it pass.
+    2. The `?rating=` filter: `1`–`5` narrow the list, and an empty value,
+       `0`, `6`, or `abc` is ignored.
+  - **Views:** `ManageReviewListView` (staff only, newest first, 20 per
+    page, `section = "reviews"`) at `/backoffice/reviews/`. The filter lives
+    in module helpers `rating_filter()` and `backoffice_reviews()`, which
+    the list and the delete response share. `ReviewLookupMixin` gained
+    `in_backoffice()`: staff plus `?surface=backoffice`. In the back office,
+    edit and save return row partials, cancel returns the row, and delete
+    returns the heading's count as an out-of-band swap.
+  - **Templates:** a Reviews tab in the staff shell, `manage_reviews.html`
+    (rating badges, a DaisyUI table, pagination, and two empty states), and
+    the partials `_review_row.html`, `_review_row_form.html` (comment-only
+    form spanning three cells), `_review_row_cells.html`, and
+    `_review_count.html`. Row URLs use `{% querystring surface='backoffice'
+    page=None %}`, so the page's `?rating=` survives edit, save, and cancel.
+  - **Tests:** 14 new test functions (110 cases in `reviews/tests.py`).
+    Final state: full suite green at 524 tests, ruff check and format clean.
+- **Deviations:**
+  - The user asked what "the staff gate" meant, then swapped Claude's TDD
+    candidates 2 and 3 (back-office save and delete) for it. Those two were
+    covered by normal tests instead.
+  - Claude's first build left the "N reviews" heading stale after a delete,
+    reading the PRD's "does not re-fetch the page" literally, and noted it
+    in the manual checks. The user asked for the count to update. The
+    delete now returns an out-of-band heading counted within the active
+    filter, which meant carrying `?rating=` through every row action.
+- **Sideways:**
+  - The staff gate's first RED run errored rather than failing an assertion
+    (the parametrized test lacked the `db` fixture). Claude added it before
+    asking for approval.
+  - One `Edit` to `reviews/views.py` matched two places and was redone
+    with a unique anchor.
+  - A combined test run passed the 120-second tool timeout and finished
+    in the background. Later runs used a longer timeout.
+  - `ruff format` wanted to rewrap two assertions in the row test; Claude
+    switched them to the `backoffice()` helper instead.
+  - Claude did not click through the feature in a browser itself. The
+    user ran the walkthrough and reported that the checks pass.
+
 ## 2026-10-17 — Customer reviews: implemented Phase 4 (staff moderate on the product page), with TDD
 
 ### Prompts

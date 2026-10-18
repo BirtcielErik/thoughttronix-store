@@ -11,4 +11,10 @@ urlpatterns = [
         "reviews/<int:pk>/cancel/", views.CancelEditReviewView.as_view(), name="cancel"
     ),
     path("reviews/<int:pk>/delete/", views.DeleteReviewView.as_view(), name="delete"),
+    # Back office — staff-only.
+    path(
+        "backoffice/reviews/",
+        views.ManageReviewListView.as_view(),
+        name="manage_reviews",
+    ),
 ]

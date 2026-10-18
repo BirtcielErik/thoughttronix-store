@@ -2,7 +2,9 @@
 
 The rules live on ``Review.objects``; every view re-checks them on the
 server, whatever the page showed. Product-page responses render the
-"Your review" slot and carry the summary as an out-of-band swap.
+"Your review" slot and carry the summary as an out-of-band swap. The
+back-office Reviews tab's rows call the same views with
+``?surface=backoffice`` and get rows back, with no summary.
 """
 
 from django.contrib.auth.mixins import LoginRequiredMixin
@@ -10,10 +12,12 @@ from django.core.exceptions import PermissionDenied
 from django.db import IntegrityError, transaction
 from django.shortcuts import get_object_or_404, render
 from django.views import View
+from django.views.generic import ListView
 
+from accounts.mixins import StaffRequiredMixin
 from products.models import Product
 
-from .forms import ModerationForm, ReviewForm
+from .forms import RATING_CHOICES, ModerationForm, ReviewForm
 from .models import Review
 
 
@@ -79,6 +83,15 @@ class ReviewLookupMixin(LoginRequiredMixin):
             reviews.select_related("author", "product"), pk=self.kwargs["pk"]
         )
 
+    def in_backoffice(self):
+        """Whether the request came from a back-office row rather than the
+        product page: its URLs carry ``?surface=backoffice``. Only staff
+        moderate there, so it answers with rows and never a summary."""
+        return (
+            self.request.user.is_staff
+            and self.request.GET.get("surface") == "backoffice"
+        )
+
 
 class EditReviewView(ReviewLookupMixin, View):
     """HTMX: GET swaps a card for the pre-filled form; POST saves.
@@ -88,7 +101,8 @@ class EditReviewView(ReviewLookupMixin, View):
     left is refused with a 403. Staff skip the purchase check and get the
     comment-only form, so a submitted rating is ignored; their save returns
     just the card, since the numbers can't change. An invalid save returns
-    the form with its errors.
+    the form with its errors. In the back office the form and the saved
+    review are rows.
     """
 
     def get_review(self):
@@ -101,11 +115,16 @@ class EditReviewView(ReviewLookupMixin, View):
     def get_form_class(self):
         return ModerationForm if self.request.user.is_staff else ReviewForm
 
+    def get_form_template(self):
+        if self.in_backoffice():
+            return "reviews/partials/_review_row_form.html"
+        return "reviews/partials/_review_edit_form.html"
+
     def get(self, request, pk):
         review = self.get_review()
         return render(
             request,
-            "reviews/partials/_review_edit_form.html",
+            self.get_form_template(),
             {"review": review, "form": self.get_form_class()(instance=review)},
         )
 
@@ -114,11 +133,13 @@ class EditReviewView(ReviewLookupMixin, View):
         form = self.get_form_class()(request.POST, instance=review)
         if not form.is_valid():
             return render(
-                request,
-                "reviews/partials/_review_edit_form.html",
-                {"review": review, "form": form},
+                request, self.get_form_template(), {"review": review, "form": form}
             )
         form.save()
+        if self.in_backoffice():
+            return render(
+                request, "reviews/partials/_review_row.html", {"review": review}
+            )
         if request.user.is_staff:
             return render(
                 request,
@@ -138,10 +159,15 @@ class EditReviewView(ReviewLookupMixin, View):
 
 
 class CancelEditReviewView(ReviewLookupMixin, View):
-    """HTMX: put the card back, unchanged, in place of the form."""
+    """HTMX: put the card (or back-office row) back, unchanged, in place of
+    the form."""
 
     def get(self, request, pk):
         review = self.get_review()
+        if self.in_backoffice():
+            return render(
+                request, "reviews/partials/_review_row.html", {"review": review}
+            )
         user = request.user
         return render(
             request,
@@ -162,12 +188,20 @@ class DeleteReviewView(ReviewLookupMixin, View):
     form if they still qualify to review the product, or the non-buyer
     message if not. A staff delete sends back nothing in place of the card,
     so it disappears from the list. Both refresh the summary out-of-band.
+    In the back office the row disappears the same way, and the heading's
+    count (within the page's ``?rating=`` filter) refreshes out-of-band.
     """
 
     def post(self, request, pk):
         review = self.get_review()
         product = review.product
         review.delete()
+        if self.in_backoffice():
+            return render(
+                request,
+                "reviews/partials/_review_count.html",
+                {"count": backoffice_reviews(request).count(), "oob": True},
+            )
         if request.user.is_staff:
             return render(
                 request,
@@ -187,3 +221,45 @@ class DeleteReviewView(ReviewLookupMixin, View):
                 "oob_summary": True,
             },
         )
+
+
+# --- The back office --------------------------------------------------------
+#
+# Staff-only moderation: every review on the site, filterable by rating.
+# Its rows edit and delete through the views above, which answer with rows
+# instead of cards; the rows' URLs keep the page's ``?rating=``, so a delete
+# can recount within the filter. The ``section`` context entry drives the
+# active tab.
+
+RATINGS = [str(stars) for stars, _ in RATING_CHOICES]
+
+
+def rating_filter(request):
+    """The ``?rating=`` filter, or "" when it isn't one of the five stars."""
+    rating = request.GET.get("rating", "")
+    return rating if rating in RATINGS else ""
+
+
+def backoffice_reviews(request):
+    """Every review, narrowed to the request's ``?rating=`` filter if any."""
+    reviews = Review.objects.select_related("author", "product")
+    if rating := rating_filter(request):
+        reviews = reviews.filter(rating=rating)
+    return reviews
+
+
+class ManageReviewListView(StaffRequiredMixin, ListView):
+    """All reviews, newest first, filterable via ``?rating=``."""
+
+    template_name = "reviews/manage_reviews.html"
+    context_object_name = "reviews"
+    paginate_by = 20
+    extra_context = {"section": "reviews", "ratings": RATINGS}
+
+    def get_queryset(self):
+        return backoffice_reviews(self.request)
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        context["active_rating"] = rating_filter(self.request)
+        return context

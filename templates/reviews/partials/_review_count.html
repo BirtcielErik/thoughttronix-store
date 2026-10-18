@@ -1,0 +1,5 @@
+{# The Reviews tab's heading: how many reviews the filter matches. Needs #}
+{# count. Include with oob=True to swap it out-of-band after a delete. #}
+<h2 id="review-count" {% if oob %}hx-swap-oob="true" {% endif %}class="text-xl font-semibold">
+  {{ count }} review{{ count|pluralize }}
+</h2>

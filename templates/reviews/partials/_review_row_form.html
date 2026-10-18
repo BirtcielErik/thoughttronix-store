@@ -1,0 +1,24 @@
+{# A back-office row being edited: the comment-only form spans the comment, #}
+{# date, and actions cells. Saving or cancelling swaps the row back. Needs #}
+{# review and form. #}
+<tr id="review-{{ review.pk }}">
+  {% include "reviews/partials/_review_row_cells.html" %}
+  <td colspan="3" class="align-top">
+    <form hx-post="{% url 'reviews:edit' review.pk %}{% querystring surface='backoffice' page=None %}"
+          hx-target="#review-{{ review.pk }}"
+          hx-swap="outerHTML"
+          hx-disabled-elt="find button[type='submit']"
+          class="flex flex-col gap-3">
+      {% include "reviews/partials/_review_fields.html" %}
+      <div class="flex gap-2">
+        <button type="submit" class="btn btn-primary btn-sm">Save</button>
+        <button type="button" class="btn btn-ghost btn-sm"
+                hx-get="{% url 'reviews:cancel' review.pk %}{% querystring surface='backoffice' page=None %}"
+                hx-target="#review-{{ review.pk }}"
+                hx-swap="outerHTML">
+          Cancel
+        </button>
+      </div>
+    </form>
+  </td>
+</tr>

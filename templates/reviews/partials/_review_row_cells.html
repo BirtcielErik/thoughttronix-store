@@ -1,0 +1,12 @@
+{# The product, reviewer, and stars cells a back-office row keeps while its #}
+{# comment is being edited. Needs review. #}
+<td class="align-top">
+  <a href="{{ review.product.get_absolute_url }}" class="link-hover font-semibold">{{ review.product.name }}</a>
+</td>
+<td class="align-top">
+  <div>{{ review.author.get_full_name|default:"—" }}</div>
+  <div class="font-mono text-xs opacity-60">{{ review.author.username }}</div>
+</td>
+<td class="align-top">
+  {% include "reviews/partials/_stars.html" with rating=review.rating %}
+</td>

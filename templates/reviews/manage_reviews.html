@@ -1,0 +1,79 @@
+{% extends "backoffice/base.html" %}
+
+{% block title %}Reviews — Back office{% endblock %}
+
+{% block backoffice %}
+  <div class="mb-4 flex flex-wrap items-center justify-between gap-4">
+    {% include "reviews/partials/_review_count.html" with count=page_obj.paginator.count %}
+    <div class="flex flex-wrap items-center gap-2 text-sm">
+      <span class="opacity-60">Rating:</span>
+      <a href="{% querystring rating=None page=None %}"
+         class="badge {% if not active_rating %}badge-primary{% else %}badge-ghost{% endif %}">
+        all
+      </a>
+      {% for rating in ratings %}
+        <a href="{% querystring rating=rating page=None %}"
+           class="badge {% if active_rating == rating %}badge-primary{% else %}badge-ghost{% endif %}">
+          {{ rating }}★
+        </a>
+      {% endfor %}
+    </div>
+  </div>
+
+  {% if reviews %}
+    <div class="overflow-x-auto rounded-box bg-base-100 shadow-md">
+      <table class="table">
+        <thead>
+          <tr>
+            <th>Product</th>
+            <th>Reviewer</th>
+            <th>Rating</th>
+            <th>Comment</th>
+            <th>Posted</th>
+            <th><span class="sr-only">Actions</span></th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for review in reviews %}
+            {% include "reviews/partials/_review_row.html" %}
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+
+    {% if is_paginated %}
+      <div class="mt-8 flex justify-center">
+        <div class="join">
+          {% if page_obj.has_previous %}
+            <a href="{% querystring page=page_obj.previous_page_number %}" class="btn join-item">«</a>
+          {% else %}
+            <button class="btn join-item btn-disabled">«</button>
+          {% endif %}
+          <button class="btn join-item pointer-events-none">
+            Page {{ page_obj.number }} of {{ page_obj.paginator.num_pages }}
+          </button>
+          {% if page_obj.has_next %}
+            <a href="{% querystring page=page_obj.next_page_number %}" class="btn join-item">»</a>
+          {% else %}
+            <button class="btn join-item btn-disabled">»</button>
+          {% endif %}
+        </div>
+      </div>
+    {% endif %}
+  {% else %}
+    <div class="py-16 text-center">
+      {% if active_rating %}
+        <p class="text-5xl">🔭</p>
+        <p class="mt-4 text-xl font-semibold">No {{ active_rating }}-star reviews</p>
+        <p class="mt-2 opacity-70">Nobody feels quite that way. Yet.</p>
+        <a href="{% querystring rating=None page=None %}" class="btn btn-primary btn-sm mt-6">
+          Show all reviews
+        </a>
+      {% else %}
+        <p class="text-5xl">💭</p>
+        <p class="mt-4 text-xl font-semibold">No reviews yet</p>
+        <p class="mt-2 opacity-70">The customers are keeping their thoughts to themselves. For now.</p>
+      {% endif %}
+    </div>
+  {% endif %}
+{% endblock %}
