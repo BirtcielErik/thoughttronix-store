@@ -94,6 +94,19 @@ class User(AbstractUser):
             ),
         ]
 
+    @property
+    def public_name(self):
+        """The name shown on public pages: first name and last initial.
+
+        "Nova K." — never the full name. Falls back to the username when
+        no first name is on file.
+        """
+        first = self.first_name.strip()
+        if not first:
+            return self.username
+        initial = self.last_name.strip()[:1]
+        return f"{first} {initial}." if initial else first
+
     def make_email_change_token(self, new_email):
         """A signed, one-hour token that confirms a change to ``new_email``.
 

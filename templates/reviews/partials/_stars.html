@@ -1,0 +1,7 @@
+{# Read-only stars: DaisyUI's rating with the rated star marked current, #}
+{# so the stars after it dim. Needs rating (a whole number, 0–5). #}
+<div class="rating rating-sm" role="img" aria-label="{{ rating }} out of 5 stars">
+  {% for _ in "12345" %}
+    <div class="mask mask-star-2 bg-warning" aria-hidden="true"{% if forloop.counter == rating %} aria-current="true"{% endif %}></div>
+  {% endfor %}
+</div>

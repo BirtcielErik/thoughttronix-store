@@ -28,6 +28,214 @@ Each entry has this shape:
     - **Deviations:** recommendations overridden, follow-up questions asked
     - **Sideways:** failures, wrong turns, and how they were caught
 
+## 2026-10-17 — Customer reviews: implemented Phase 1 (read reviews on the product page), with TDD
+
+### Prompts
+
+1. "/implement @prd/reviews.md @plans/reviews.md Implement Phase 1"
+2. "Approved, go ahead" — accepting the three proposed TDD behaviors.
+3. "Approved, go ahead" — accepting the RED test for behavior 1.
+4. "Approved, go ahead" — accepting behavior 1's GREEN step.
+5. "Approved, go ahead" — accepting the RED test for behavior 2.
+6. "Approved, go ahead" — accepting behavior 2's GREEN step.
+7. "Approved, go ahead" — accepting the RED test for behavior 3.
+8. "Approved, go ahead" — accepting behavior 3's GREEN step and the plan
+   for the rest of the phase.
+9. "The slot for "Your Review" is not differentiated from the list of
+   other reviews - it looks like it is just a part of the same list"
+10. "That styling is much better. Manual checks pass, go ahead"
+
+### Summary
+
+- **Outcome:** Phase 1 was built, committed, and pushed.
+  - **TDD behaviors (approved up front):**
+    1. `Review.objects.can_create`: placed, shipped, and delivered orders
+       qualify; a cancelled-only order, no order, an existing review,
+       staff, and anonymous users do not.
+    2. `Review.was_edited`: false for a fresh review, true after a save an
+       hour later. A one-minute tolerance absorbs the microseconds between
+       `created_at` (set at build time) and `updated_at` (set at save).
+    3. The "Your review" slot by viewer: sign-in link with `next` for
+       visitors, the buyers-only message for non-buyers, the pinned own
+       review (left out of the list) for reviewers, and no slot for staff.
+  - **App:** new `reviews` app with the `Review` model (unique author and
+    product, 1–5 rating, 2,000-character comment, backdatable
+    `created_at`, cascades on product and author) and its migration.
+    `ReviewQuerySet` owns `can_create`, `may_edit`, and `summary`; the
+    purchase check matches the dashboard's "every status except
+    cancelled".
+  - **Accounts:** `User.public_name` gives "Nova K.", falling back to the
+    username when no first name is on file.
+  - **Product page:** the `{% reviews_section product %}` inclusion tag
+    renders the summary, the slot, and the list from partials under
+    `templates/reviews/partials/`, ready for Phase 2's HTMX swaps. Stars
+    use DaisyUI's read-only `rating`.
+  - **Tests:** 36 in `reviews/tests.py` and 4 public-name cases in
+    `accounts/tests.py`. Final state: full suite green at 447 tests, ruff
+    check and format clean.
+- **Deviations:**
+  - The user approved every TDD proposal without changes.
+  - After manual checks, the user said the slot looked like part of the
+    list. Claude boxed the slot in a bordered `bg-base-200` panel with a
+    "Your review" heading in every customer state, and added a divider
+    ("From other customers" / "From customers") above the list. Its
+    wording depends only on who is viewing, so Phase 2's slot swaps won't
+    leave it stale.
+  - Unasked, Claude switched the summary's star rounding to round-half-up
+    after noticing that Python's `round()` would show 2.5 as two stars.
+- **Sideways:**
+  - Behaviors 1 and 3 needed scaffolding before they could fail on an
+    assertion: a stub `can_create` returning False, then an empty slot
+    shown to every viewer. Behavior 1's five refusal cases passed against
+    the stub; Claude said so when showing the RED test.
+  - `ruff format --check` flagged two files. Claude applied the fixes by
+    hand with Edit rather than running the formatter.
+  - Phase 1 has no way to write a review, so Claude ran a scratchpad
+    script that created four demo reviews of Veil in the dev database,
+    each by a real buyer, for the manual walkthrough. A PowerShell
+    pipe into `manage.py shell` first failed on a byte-order mark; Bash
+    worked.
+  - Claude did not click through the feature in a browser itself. The
+    user ran the walkthrough and reported that the checks pass.
+
+## 2026-10-17 — Customer reviews: PRD to a five-phase plan
+
+### Prompts
+
+1. "/prd-to-plan @prd/reviews.md"
+2. "Merge 5 into 1, and move 7 up to 2" — in response to Claude's proposed
+   seven phases.
+3. "Sorry - I meant merge 5 into 1 and also merge 7 into 2" — a correction,
+   given after rejecting Claude's first write of the plan file.
+4. "Leave 1 as it is, merge both 7 and 5 into 2" — a second correction,
+   given after rejecting Claude's second write.
+5. "yes, write it" — approving the five-phase breakdown.
+6. This prompt, asking for the session log.
+
+### Summary
+
+- **Outcome:** `plans/reviews.md`, with five vertical slices in the
+  wishlist plan's format. No code was changed.
+  - **Phase 1:** reading reviews on the product page.
+  - **Phase 2:** writing a review, the catalog-card stars, the demo-review
+    seed, and the CLAUDE.md update.
+  - **Phase 3:** customers editing and deleting their own review.
+  - **Phase 4:** staff moderating on the product page.
+  - **Phase 5:** the back-office Reviews tab.
+  - The header fixes the `reviews` app and its `reviews:` URL names, the
+    `Review` model and its constraints, the queryset rules, and the
+    authorization table.
+  - Every PRD user story is assigned to a phase.
+  - Before proposing phases, Claude read the existing plans, the
+    architecture, frontend, and testing docs, the URLconfs, the wishlist
+    views, the catalog views, the back-office shell, and the order models.
+- **Deviations:**
+  - Claude proposed seven phases and offered two optional changes: merging
+    the catalog stars (5) into the read phase (1) or merging the two staff
+    phases (4 and 6), and moving the seed (7) up to Phase 2.
+  - The user's final choice matched neither option. Both the catalog stars
+    and the seed went into the write phase (2), and Phase 1 stayed as
+    proposed. The two staff phases stayed separate.
+  - The user asked no follow-up questions.
+- **Sideways:**
+  - Claude misread prompt 2. "Move 7 up to 2" meant merging the seed into
+    the write phase, but Claude took it as reordering the phases.
+  - Claude then wrote the plan file straight away, without confirming the
+    revised breakdown. The user rejected that write.
+  - Claude made the same mistake after the first correction. It wrote
+    immediately, and the user rejected the second write too.
+  - Only after the second rejection did Claude restate the breakdown and
+    ask for approval before writing. That is what the skill's "iterate
+    until the user approves" step required from the start.
+  - The rejected drafts also merged the separate `…/save/` URL into
+    `reviews:edit` (GET for the form, POST to save) without saying so.
+    Claude flagged this change only when it restated the breakdown for
+    approval.
+  - Claude flagged three plan decisions the PRD doesn't spell out:
+    - create is keyed by product pk;
+    - refusals are 403s;
+    - cancel is a GET.
+
+## 2026-10-17 — Customer reviews: design interview (grill-me) and PRD
+
+### Prompts
+
+1. "/grill-me ThoughtTronix needs a customer review feature. A customer can
+   leave only one review per product. Each review includes a rating and a
+   written comment. Customers can only leave reviews for products that they
+   have purchased. Customers can only edit and delete their own reviews.
+   Staff can edit and delete any review. Creating, editing, or deleting a
+   review should not reload the entire page."
+2. "Option A" — what counts as purchased: any order that isn't cancelled.
+3. "Option A, and apply the same check when a customer edits their review"
+   — the purchase check runs only at creation (reviews survive later
+   cancellations), and also on customer edits.
+4. "Option A" — rating: whole stars from 1 to 5.
+5. "Option B" — comment: required, up to 2,000 characters.
+6. "Option B" — staff edit the comment only, never the rating.
+7. "Option B" — staff can't create reviews.
+8. "Option B" — a short explanatory line for visitors who can't review.
+9. "Option A" — edit swaps in place (HTMX click-to-edit).
+10. "Option C" — rating summary on the product page and on catalog cards.
+11. "Option B" — a back-office Reviews tab plus staff buttons on product
+    pages.
+12. "Option A" — the Reviews tab uses HTMX too.
+13. "Option B" — delete confirmation with `hx-confirm`.
+14. "Option B" — public name is first name and last initial, falling back
+    to the username.
+15. "Option A" — product page: newest first, unpaginated, with a pinned
+    "Your review" slot.
+16. "Option A" — Reviews tab: newest first, 20 per page, `?rating=` filter.
+17. "Option A" — product and author deletes cascade to reviews.
+18. "Option A" — `created_at` and `updated_at`, with an "(edited)" label.
+19. "Option A" — the seed creates realistic, rule-abiding, deliberately
+    incomplete reviews.
+20. "Option A" — no dashboard changes.
+21. "/to-prd"
+22. This prompt, asking for the session log.
+
+### Summary
+
+- **Outcome:** a 19-question design interview, then `prd/reviews.md`
+  written in the wishlist PRD's structure. No code was changed.
+  - **Model:** one `Review` per customer per product (a unique
+    constraint), with a 1–5 rating and a required comment.
+  - **Rules:** in the model layer, one definition shared by the views,
+    the inclusion tag, and the seed.
+  - **Staff:** moderators only. They get a comment-only form and never
+    create reviews.
+  - **HTMX:** a pinned `#your-review` slot is the target for customer
+    actions. Cards and back-office rows swap in place, and the summary
+    refreshes with out-of-band swaps.
+  - **Scope:** catalog-card stars and a back-office Reviews tab are in.
+    Dashboard analytics are deferred.
+  - Claude explored the codebase before asking. It read the architecture,
+    frontend, and testing docs; the order, product, and wishlist code;
+    the product, catalog, and back-office templates; and the Orders tab's
+    filter. Questions the code could answer were stated as assumptions
+    instead of asked.
+- **Deviations:**
+  - Question 9 (rating summary): the user chose C (product page and
+    catalog cards) over the recommended B (product page only).
+  - Question 10 (staff moderation): the user chose B (back-office Reviews
+    tab) over the recommended A (product page only). Claude had already
+    said B would be the stronger choice if back-office coverage counted
+    for a course project.
+  - Question 2: the user accepted the recommendation and the follow-up
+    Claude offered (re-check purchase on customer edits).
+  - Every other answer matched Claude's recommendation. The user asked no
+    follow-up questions.
+- **Sideways:**
+  - Nothing failed.
+  - After the user accepted its Question 13 recommendation, Claude pointed
+    out that the username fallback partly contradicts its own reason for
+    not showing usernames. It offered "Verified buyer" as an alternative.
+    The PRD records this caveat in Further Notes.
+  - The PRD contains three small choices that weren't discussed. Claude
+    flagged them for review: no stars on cards for unreviewed products,
+    refusing an ineligible create without naming a status code, and
+    promoted-to-staff authors getting the comment-only form.
+
 ## 2026-10-17 — Wishlist: implemented Phase 3 (Most wishlisted panel and demo wishlists), with TDD
 
 ### Prompts
