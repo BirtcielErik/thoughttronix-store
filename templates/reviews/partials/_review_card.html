@@ -1,5 +1,7 @@
 {# One review, as it appears on the product page. Needs review; can_edit #}
 {# and can_delete add its actions. Edit swaps just this card for the form. #}
+{# A customer's delete refills the "Your review" slot; a staff delete #}
+{# removes just this card. #}
 <article id="review-{{ review.pk }}" class="card bg-base-100 shadow-sm">
   <div class="card-body gap-2 p-5">
     <div class="flex flex-wrap items-center gap-3">
@@ -23,8 +25,14 @@
         {% if can_delete %}
           <button type="button" class="btn btn-ghost btn-xs text-error"
                   hx-post="{% url 'reviews:delete' review.pk %}"
-                  hx-target="#your-review"
-                  hx-confirm="Are you sure? This deletes your review.">
+                  {% if user.is_staff %}
+                    hx-target="#review-{{ review.pk }}"
+                    hx-swap="outerHTML"
+                    hx-confirm="Are you sure? This deletes {{ review.author.public_name }}'s review."
+                  {% else %}
+                    hx-target="#your-review"
+                    hx-confirm="Are you sure? This deletes your review."
+                  {% endif %}>
             Delete
           </button>
         {% endif %}

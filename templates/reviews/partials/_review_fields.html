@@ -1,7 +1,9 @@
 {# The rating and comment inputs, shared by the new-review and edit forms. #}
 {# Needs form. The rating is DaisyUI's star rating: radio inputs, no #}
 {# JavaScript. The hidden first radio means "no rating yet", so no star #}
-{# looks chosen before the customer picks one. #}
+{# looks chosen before the customer picks one. The staff moderation form #}
+{# has no rating, so it gets the comment alone. #}
+{% if "rating" in form.fields %}
 <fieldset>
   <legend class="label mb-1">Your rating</legend>
   <div class="rating rating-lg">
@@ -16,6 +18,7 @@
     <p class="mt-1 text-sm text-error">{{ error }}</p>
   {% endfor %}
 </fieldset>
+{% endif %}
 
 <div>
   <label class="label mb-1" for="{{ form.comment.id_for_label }}">Your comment</label>

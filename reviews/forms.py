@@ -1,6 +1,6 @@
-"""The customer review form.
+"""The customer review form and the staff moderation form.
 
-The form owns the review's validation: a rating that is one of the five
+The forms own the review's validation: a rating that is one of the five
 stars, and a comment that is required, at most 2,000 characters, and not
 just whitespace (``CharField`` strips it, so blank-after-stripping fails
 ``required``). The rating input is rendered by hand as DaisyUI's star
@@ -35,3 +35,11 @@ class ReviewForm(forms.ModelForm):
             ),
         }
         error_messages = {"comment": {"required": "Write a comment."}}
+
+
+class ModerationForm(forms.ModelForm):
+    """Staff edit the comment only. The rating is not a field at all, so a
+    submitted rating is ignored and a customer's opinion can't be rewritten."""
+
+    class Meta(ReviewForm.Meta):
+        fields = ["comment"]

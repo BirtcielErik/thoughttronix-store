@@ -21,8 +21,9 @@
   </div>
 
   <div id="review-list" class="flex flex-col gap-4">
+    {# Staff moderate every card; customers act only on their own, in the slot. #}
     {% for review in reviews %}
-      {% include "reviews/partials/_review_card.html" %}
+      {% include "reviews/partials/_review_card.html" with can_edit=user.is_staff can_delete=user.is_staff %}
     {% endfor %}
   </div>
 </section>

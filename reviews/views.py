@@ -13,7 +13,7 @@ from django.views import View
 
 from products.models import Product
 
-from .forms import ReviewForm
+from .forms import ModerationForm, ReviewForm
 from .models import Review
 
 
@@ -64,45 +64,54 @@ class CreateReviewView(LoginRequiredMixin, View):
         )
 
 
-class OwnReviewMixin(LoginRequiredMixin):
-    """Fetches the review named in the URL for a customer acting on it.
+class ReviewLookupMixin(LoginRequiredMixin):
+    """Fetches the review named in the URL for the user acting on it.
 
-    The review is fetched through the customer's own reviews — never by
-    bare pk — so another customer's review is a 404.
+    Staff are moderators and look among all reviews. A customer's lookup
+    goes through their own reviews — never by bare pk — so another
+    customer's review is a 404.
     """
 
     def get_review(self):
+        user = self.request.user
+        reviews = Review.objects.all() if user.is_staff else user.reviews.all()
         return get_object_or_404(
-            self.request.user.reviews.select_related("author", "product"),
-            pk=self.kwargs["pk"],
+            reviews.select_related("author", "product"), pk=self.kwargs["pk"]
         )
 
 
-class EditReviewView(OwnReviewMixin, View):
-    """HTMX: GET swaps the owner's card for the pre-filled form; POST saves.
+class EditReviewView(ReviewLookupMixin, View):
+    """HTMX: GET swaps a card for the pre-filled form; POST saves.
 
-    A valid save returns the updated card and refreshes the summary
-    out-of-band; an invalid one returns the form with its errors. An owner
-    with no qualifying order left is refused with a 403 and changes nothing.
+    Owners get the full form; a valid save returns the updated card and
+    refreshes the summary out-of-band, and an owner with no qualifying order
+    left is refused with a 403. Staff skip the purchase check and get the
+    comment-only form, so a submitted rating is ignored; their save returns
+    just the card, since the numbers can't change. An invalid save returns
+    the form with its errors.
     """
 
     def get_review(self):
         review = super().get_review()
-        if not Review.objects.may_edit(self.request.user, review.product):
+        user = self.request.user
+        if not user.is_staff and not Review.objects.may_edit(user, review.product):
             raise PermissionDenied
         return review
+
+    def get_form_class(self):
+        return ModerationForm if self.request.user.is_staff else ReviewForm
 
     def get(self, request, pk):
         review = self.get_review()
         return render(
             request,
             "reviews/partials/_review_edit_form.html",
-            {"review": review, "form": ReviewForm(instance=review)},
+            {"review": review, "form": self.get_form_class()(instance=review)},
         )
 
     def post(self, request, pk):
         review = self.get_review()
-        form = ReviewForm(request.POST, instance=review)
+        form = self.get_form_class()(request.POST, instance=review)
         if not form.is_valid():
             return render(
                 request,
@@ -110,6 +119,12 @@ class EditReviewView(OwnReviewMixin, View):
                 {"review": review, "form": form},
             )
         form.save()
+        if request.user.is_staff:
+            return render(
+                request,
+                "reviews/partials/_review_card.html",
+                {"review": review, "can_edit": True, "can_delete": True},
+            )
         return render(
             request,
             "reviews/partials/_review_saved.html",
@@ -122,33 +137,43 @@ class EditReviewView(OwnReviewMixin, View):
         )
 
 
-class CancelEditReviewView(OwnReviewMixin, View):
-    """HTMX: put the owner's card back, unchanged, in place of the form."""
+class CancelEditReviewView(ReviewLookupMixin, View):
+    """HTMX: put the card back, unchanged, in place of the form."""
 
     def get(self, request, pk):
         review = self.get_review()
+        user = request.user
         return render(
             request,
             "reviews/partials/_review_card.html",
             {
                 "review": review,
-                "can_edit": Review.objects.may_edit(request.user, review.product),
+                "can_edit": user.is_staff
+                or Review.objects.may_edit(user, review.product),
                 "can_delete": True,
             },
         )
 
 
-class DeleteReviewView(OwnReviewMixin, View):
-    """HTMX: delete the owner's review and refill the "Your review" slot.
+class DeleteReviewView(ReviewLookupMixin, View):
+    """HTMX: delete a review and send back what replaces it.
 
-    Always allowed for the owner. The slot falls back to the form if they
-    still qualify to review the product, or the non-buyer message if not.
+    Always allowed for the owner, whose "Your review" slot falls back to the
+    form if they still qualify to review the product, or the non-buyer
+    message if not. A staff delete sends back nothing in place of the card,
+    so it disappears from the list. Both refresh the summary out-of-band.
     """
 
     def post(self, request, pk):
         review = self.get_review()
         product = review.product
         review.delete()
+        if request.user.is_staff:
+            return render(
+                request,
+                "reviews/partials/_summary.html",
+                {"summary": Review.objects.summary(product), "oob": True},
+            )
         can_create = Review.objects.can_create(request.user, product)
         return render(
             request,

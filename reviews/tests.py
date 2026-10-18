@@ -738,6 +738,152 @@ def test_cancel_refuses_post(client, customer, own_review):
     assert response.status_code == 405
 
 
+# --- Staff moderation on the product page -------------------------------------
+
+
+def test_staff_see_edit_and_delete_on_every_card(
+    client, staff_user, product, nova_review
+):
+    # Nova's order is cancelled: staff moderate regardless of the purchase.
+    Order.objects.update(status=Order.Status.CANCELLED)
+    client.force_login(staff_user)
+
+    _, listing = reviews_parts(client, product)
+
+    assert f'hx-get="{reverse("reviews:edit", args=[nova_review.pk])}"' in listing
+    assert f'hx-post="{reverse("reviews:delete", args=[nova_review.pk])}"' in listing
+    # Delete removes just this card, after a confirmation.
+    assert f'hx-target="#review-{nova_review.pk}"' in listing
+    assert "hx-confirm=" in listing
+
+
+def test_staff_save_changes_the_comment_and_ignores_the_rating(
+    client, staff_user, nova_review
+):
+    client.force_login(staff_user)
+
+    response = client.post(
+        reverse("reviews:edit", args=[nova_review.pk]),
+        {"rating": 1, "comment": "[Removed by moderator]"},
+    )
+
+    nova_review.refresh_from_db()
+    assert nova_review.comment == "[Removed by moderator]"
+    assert nova_review.rating == 5
+    page = response.content.decode()
+    assert f'<article id="review-{nova_review.pk}"' in page
+    assert "[Removed by moderator]" in page
+
+
+def test_staff_delete_empties_the_card_and_refreshes_the_summary(
+    client, customer, staff_user, product, nova_review
+):
+    buy(customer, product)
+    Review.objects.create(author=customer, product=product, rating=2, comment="Meh.")
+    client.force_login(staff_user)
+
+    response = client.post(reverse("reviews:delete", args=[nova_review.pk]))
+
+    assert response.status_code == 200
+    assert not Review.objects.filter(pk=nova_review.pk).exists()
+    page = response.content.decode()
+    # The summary alone, out-of-band, so the card is swapped for nothing.
+    assert re.fullmatch(
+        r'\s*<div id="review-summary"[^>]*hx-swap-oob="true".*', page, re.S
+    )
+    assert "Your review" not in page
+    assert "2.0" in page
+    assert "(1 review)" in page
+
+
+def test_staff_edit_gets_the_comment_only_form(client, staff_user, nova_review):
+    client.force_login(staff_user)
+
+    response = client.get(reverse("reviews:edit", args=[nova_review.pk]))
+
+    page = response.content.decode()
+    assert f'hx-post="{reverse("reviews:edit", args=[nova_review.pk])}"' in page
+    assert "Finally, someone listens." in page
+    assert 'name="comment"' in page
+    assert 'name="rating"' not in page
+    assert reverse("reviews:cancel", args=[nova_review.pk]) in page
+
+
+def test_staff_moderate_a_review_whose_author_no_longer_qualifies(
+    client, staff_user, nova_review
+):
+    Order.objects.update(status=Order.Status.CANCELLED)
+    client.force_login(staff_user)
+    edit_url = reverse("reviews:edit", args=[nova_review.pk])
+
+    assert client.get(edit_url).status_code == 200
+    response = client.post(edit_url, {"comment": "Edited by staff."})
+
+    assert response.status_code == 200
+    nova_review.refresh_from_db()
+    assert nova_review.comment == "Edited by staff."
+
+
+def test_staff_save_leaves_the_summary_alone(client, staff_user, nova_review):
+    client.force_login(staff_user)
+
+    response = client.post(
+        reverse("reviews:edit", args=[nova_review.pk]), {"comment": "Trimmed."}
+    )
+
+    page = response.content.decode()
+    # The card keeps its moderation actions, and a comment can't move the numbers.
+    assert reverse("reviews:delete", args=[nova_review.pk]) in page
+    assert "hx-swap-oob" not in page
+
+
+def test_invalid_staff_save_returns_the_form_and_changes_nothing(
+    client, staff_user, nova_review
+):
+    client.force_login(staff_user)
+
+    response = client.post(
+        reverse("reviews:edit", args=[nova_review.pk]), {"rating": 1, "comment": " "}
+    )
+
+    page = response.content.decode()
+    assert "Write a comment." in page
+    assert 'name="rating"' not in page
+    nova_review.refresh_from_db()
+    assert (nova_review.rating, nova_review.comment) == (
+        5,
+        "Finally, someone listens.",
+    )
+
+
+def test_staff_cancel_returns_the_card_with_its_actions(
+    client, staff_user, nova_review
+):
+    client.force_login(staff_user)
+
+    response = client.get(reverse("reviews:cancel", args=[nova_review.pk]))
+
+    page = response.content.decode()
+    assert f'<article id="review-{nova_review.pk}"' in page
+    assert "Finally, someone listens." in page
+    assert reverse("reviews:edit", args=[nova_review.pk]) in page
+    assert f'hx-target="#review-{nova_review.pk}"' in page
+
+
+def test_staff_moderate_their_own_earlier_review(client, staff_user, product):
+    review = Review.objects.create(
+        author=staff_user, product=product, rating=3, comment="Bought it pre-promotion."
+    )
+    client.force_login(staff_user)
+    edit_url = reverse("reviews:edit", args=[review.pk])
+
+    assert 'name="rating"' not in client.get(edit_url).content.decode()
+    client.post(edit_url, {"rating": 5, "comment": "Bought it before I worked here."})
+
+    review.refresh_from_db()
+    assert (review.rating, review.comment) == (3, "Bought it before I worked here.")
+
+
 # --- Stars in the catalog -----------------------------------------------------
 
 

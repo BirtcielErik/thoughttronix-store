@@ -28,6 +28,63 @@ Each entry has this shape:
     - **Deviations:** recommendations overridden, follow-up questions asked
     - **Sideways:** failures, wrong turns, and how they were caught
 
+## 2026-10-17 — Customer reviews: implemented Phase 4 (staff moderate on the product page), with TDD
+
+### Prompts
+
+1. "/implement @prd/reviews.md @plans/reviews.md Implement Phase 4"
+2. "go ahead with all three" — accepting all three proposed TDD behaviors.
+3. "go ahead, make it pass" — accepting the RED test for staff Edit and
+   Delete on every card.
+4. "go ahead with behavior 1" — accepting its GREEN step.
+5. "go ahead, make it pass" — accepting the RED test for the staff save
+   that ignores the rating.
+6. "go ahead with behavior 2" — accepting its GREEN step.
+7. "go ahead, make it pass" — accepting the RED test for the staff delete.
+8. "go ahead with the rest of the phase" — accepting its GREEN step.
+9. "manual checks pass, finish the phase"
+
+### Summary
+
+- **Outcome:** Phase 4 was built, committed, and pushed.
+  - **TDD behaviors (all three approved):**
+    1. Staff see Edit and Delete on every card in the list, even when the
+       author no longer has a qualifying order, and Delete targets that
+       card rather than the "Your review" slot.
+    2. A staff save changes the comment and ignores a submitted rating,
+       returning the updated card.
+    3. A staff delete removes the review and returns only the out-of-band
+       summary, so the card is swapped for nothing.
+  - **Forms:** `ModerationForm` reuses `ReviewForm.Meta` with
+    `fields = ["comment"]`; the rating is not a field at all.
+  - **Views:** `OwnReviewMixin` became `ReviewLookupMixin`: staff look
+    among all reviews, customers still through `user.reviews`.
+    `EditReviewView` skips `may_edit` for staff, picks the form with
+    `get_form_class()`, and a staff save returns just the card (no
+    summary, since a comment can't change the numbers).
+    `CancelEditReviewView` gives staff `can_edit`. `DeleteReviewView`
+    renders `_summary.html` with `oob=True` for staff.
+  - **Templates:** the section passes `can_edit`/`can_delete` as
+    `user.is_staff` to list cards. The card's Delete targets
+    `#review-<pk>` with `outerHTML` for staff and confirms with the
+    reviewer's public name. `_review_fields.html` shows the stars only
+    when the form has a `rating` field.
+  - **Tests:** 9 new tests (88 in `reviews/tests.py`). Final state: full
+    suite green at 502 tests, ruff check and format clean.
+- **Deviations:** None. Every TDD step was accepted as proposed.
+- **Sideways:**
+  - Behavior 1's shared lookup change also let staff reach
+    `DeleteReviewView`, which briefly answered staff with an owner's
+    "Your review" slot. Claude flagged this at the GREEN step; behavior 2
+    fixed it.
+  - Behavior 1's RED was a 404 (staff couldn't look the review up yet),
+    surfacing as the comment-unchanged assertion. Claude showed the log
+    line that explained it.
+  - `ruff format` reformatted the long `fullmatch` assertion in the
+    behavior 2 test after it was approved; a mechanical change only.
+  - Claude did not click through the feature in a browser itself. The
+    user ran the walkthrough and reported that the checks pass.
+
 ## 2026-10-17 — Customer reviews: implemented Phase 3 (customers edit and delete their own review), with TDD
 
 ### Prompts
