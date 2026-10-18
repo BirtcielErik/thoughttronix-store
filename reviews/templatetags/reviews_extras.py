@@ -39,6 +39,7 @@ def reviews_section(context, product):
         "reviews": reviews,
         "show_slot": show_slot,
         "own_review": own_review,
+        "own_can_edit": bool(own_review) and Review.objects.may_edit(user, product),
         "can_create": can_create,
         "form": ReviewForm() if can_create else None,
     }

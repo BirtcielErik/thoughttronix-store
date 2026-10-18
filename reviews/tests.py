@@ -499,6 +499,245 @@ def test_a_double_submit_is_refused_not_an_error(
     assert Review.objects.count() == 1
 
 
+# --- Editing and deleting your own review -------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("method", "name", "data"),
+    [
+        ("get", "reviews:edit", {}),
+        ("post", "reviews:edit", {"rating": 1, "comment": "Hijacked."}),
+        ("get", "reviews:cancel", {}),
+        ("post", "reviews:delete", {}),
+    ],
+)
+def test_another_customers_review_is_a_404(
+    client, customer, product, nova_review, method, name, data
+):
+    buy(customer, product)
+    client.force_login(customer)
+
+    response = getattr(client, method)(reverse(name, args=[nova_review.pk]), data)
+
+    assert response.status_code == 404
+    nova_review.refresh_from_db()
+    assert nova_review.rating == 5
+    assert nova_review.comment == "Finally, someone listens."
+
+
+def test_owner_whose_only_order_was_cancelled_can_delete_but_not_edit(
+    client, customer, product
+):
+    order = buy(customer, product)
+    review = Review.objects.create(
+        author=customer, product=product, rating=4, comment="Kept my word."
+    )
+    order.status = Order.Status.CANCELLED
+    order.save()
+    client.force_login(customer)
+    edit_url = reverse("reviews:edit", args=[review.pk])
+
+    assert client.get(edit_url).status_code == 403
+    response = client.post(edit_url, {"rating": 1, "comment": "Changed my mind."})
+    assert response.status_code == 403
+    review.refresh_from_db()
+    assert (review.rating, review.comment) == (4, "Kept my word.")
+
+    response = client.post(reverse("reviews:delete", args=[review.pk]))
+
+    assert response.status_code == 200
+    assert not Review.objects.exists()
+    page = response.content.decode()
+    assert "Only customers who bought this product can review it" in page
+    assert 'name="comment"' not in page
+
+
+@pytest.fixture
+def own_review(customer, product):
+    """The signed-in customer's review of a product they bought, posted an
+    hour ago so a save now counts as an edit."""
+    buy(customer, product)
+    an_hour_ago = timezone.now() - timedelta(hours=1)
+    review = Review.objects.create(
+        author=customer, product=product, rating=4, comment="My hub hears everything."
+    )
+    Review.objects.filter(pk=review.pk).update(
+        created_at=an_hour_ago, updated_at=an_hour_ago
+    )
+    review.refresh_from_db()
+    return review
+
+
+def test_own_review_card_has_edit_and_delete(client, customer, product, own_review):
+    client.force_login(customer)
+
+    slot, _ = reviews_parts(client, product)
+
+    assert f'hx-get="{reverse("reviews:edit", args=[own_review.pk])}"' in slot
+    assert f'hx-post="{reverse("reviews:delete", args=[own_review.pk])}"' in slot
+    assert "hx-confirm=" in slot
+
+
+def test_no_edit_button_once_the_only_order_is_cancelled(
+    client, customer, product, own_review
+):
+    Order.objects.update(status=Order.Status.CANCELLED)
+    client.force_login(customer)
+
+    slot, _ = reviews_parts(client, product)
+
+    assert reverse("reviews:edit", args=[own_review.pk]) not in slot
+    assert reverse("reviews:delete", args=[own_review.pk]) in slot
+
+
+def test_other_customers_cards_have_no_actions(client, customer, product, nova_review):
+    buy(customer, product)
+    client.force_login(customer)
+
+    _, listing = reviews_parts(client, product)
+
+    assert reverse("reviews:edit", args=[nova_review.pk]) not in listing
+    assert reverse("reviews:delete", args=[nova_review.pk]) not in listing
+
+
+def test_edit_returns_the_prefilled_form(client, customer, own_review):
+    client.force_login(customer)
+
+    response = client.get(reverse("reviews:edit", args=[own_review.pk]))
+
+    page = response.content.decode()
+    assert f'id="review-{own_review.pk}"' in page
+    assert f'hx-post="{reverse("reviews:edit", args=[own_review.pk])}"' in page
+    assert re.search(r'value="4"[^>]*checked', page)
+    assert "My hub hears everything." in page
+    assert reverse("reviews:cancel", args=[own_review.pk]) in page
+
+
+def test_save_returns_the_edited_card_and_an_oob_summary(
+    client, customer, own_review, nova_review
+):
+    client.force_login(customer)
+
+    response = client.post(
+        reverse("reviews:edit", args=[own_review.pk]),
+        {"rating": 2, "comment": "It hears too much."},
+    )
+
+    own_review.refresh_from_db()
+    assert (own_review.rating, own_review.comment) == (2, "It hears too much.")
+    page = response.content.decode()
+    assert f'<article id="review-{own_review.pk}"' in page
+    assert "It hears too much." in page
+    assert "(edited)" in page
+    assert 'name="comment"' not in page
+    # Nova's 5 and the new 2.
+    assert re.search(r'<div id="review-summary"[^>]*hx-swap-oob="true"', page)
+    assert "3.5" in page
+    assert "(2 reviews)" in page
+
+
+@pytest.mark.parametrize(
+    ("data", "error"),
+    [
+        ({"comment": "Fine."}, "Choose a star rating."),
+        ({"rating": 9, "comment": "Fine."}, "Select a valid choice."),
+        ({"rating": 2, "comment": "  "}, "Write a comment."),
+        ({"rating": 2, "comment": "x" * 2001}, "at most 2000 characters"),
+    ],
+)
+def test_invalid_save_returns_the_form_and_changes_nothing(
+    client, customer, own_review, data, error
+):
+    client.force_login(customer)
+
+    response = client.post(reverse("reviews:edit", args=[own_review.pk]), data)
+
+    assert response.status_code == 200
+    page = response.content.decode()
+    assert 'name="comment"' in page
+    assert error in page
+    assert "hx-swap-oob" not in page
+    own_review.refresh_from_db()
+    assert (own_review.rating, own_review.comment) == (4, "My hub hears everything.")
+
+
+def test_cancel_returns_the_card_unchanged(client, customer, own_review):
+    client.force_login(customer)
+
+    response = client.get(reverse("reviews:cancel", args=[own_review.pk]))
+
+    page = response.content.decode()
+    assert f'<article id="review-{own_review.pk}"' in page
+    assert "My hub hears everything." in page
+    assert 'name="comment"' not in page
+    assert reverse("reviews:edit", args=[own_review.pk]) in page
+    assert "hx-swap-oob" not in page
+
+
+def test_delete_brings_the_form_back_and_refreshes_the_summary(
+    client, customer, product, own_review, nova_review
+):
+    client.force_login(customer)
+
+    response = client.post(reverse("reviews:delete", args=[own_review.pk]))
+
+    assert not Review.objects.filter(pk=own_review.pk).exists()
+    page = response.content.decode()
+    assert f'hx-post="{reverse("reviews:create", args=[product.pk])}"' in page
+    assert "My hub hears everything." not in page
+    # Only Nova's 5 is left.
+    assert re.search(r'<div id="review-summary"[^>]*hx-swap-oob="true"', page)
+    assert "5.0" in page
+    assert "(1 review)" in page
+
+
+def test_deleting_the_last_review_says_no_reviews(client, customer, own_review):
+    client.force_login(customer)
+
+    response = client.post(reverse("reviews:delete", args=[own_review.pk]))
+
+    assert "No reviews yet." in response.content.decode()
+
+
+@pytest.mark.parametrize(
+    ("method", "name"),
+    [
+        ("get", "reviews:edit"),
+        ("post", "reviews:edit"),
+        ("get", "reviews:cancel"),
+        ("post", "reviews:delete"),
+    ],
+)
+def test_edit_cancel_and_delete_redirect_anonymous_visitors(
+    client, own_review, method, name
+):
+    response = getattr(client, method)(
+        reverse(name, args=[own_review.pk]), {"rating": 1, "comment": "Anon."}
+    )
+
+    assert response.status_code == 302
+    assert response.url.startswith(reverse("accounts:login"))
+    own_review.refresh_from_db()
+    assert own_review.comment == "My hub hears everything."
+
+
+def test_delete_refuses_get(client, customer, own_review):
+    client.force_login(customer)
+
+    response = client.get(reverse("reviews:delete", args=[own_review.pk]))
+
+    assert response.status_code == 405
+    assert Review.objects.filter(pk=own_review.pk).exists()
+
+
+def test_cancel_refuses_post(client, customer, own_review):
+    client.force_login(customer)
+
+    response = client.post(reverse("reviews:cancel", args=[own_review.pk]))
+
+    assert response.status_code == 405
+
+
 # --- Stars in the catalog -----------------------------------------------------
 
 

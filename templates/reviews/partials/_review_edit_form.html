@@ -1,0 +1,22 @@
+{# A review being edited, swapped in place of its card. Saving or cancelling #}
+{# swaps the card back. Needs review and form. #}
+<form id="review-{{ review.pk }}"
+      hx-post="{% url 'reviews:edit' review.pk %}"
+      hx-target="#review-{{ review.pk }}"
+      hx-swap="outerHTML"
+      hx-disabled-elt="find button[type='submit']"
+      class="card bg-base-100 shadow-sm">
+  <div class="card-body gap-4 p-5">
+    {% include "reviews/partials/_review_fields.html" %}
+
+    <div class="flex gap-2">
+      <button type="submit" class="btn btn-primary btn-sm">Save</button>
+      <button type="button" class="btn btn-ghost btn-sm"
+              hx-get="{% url 'reviews:cancel' review.pk %}"
+              hx-target="#review-{{ review.pk }}"
+              hx-swap="outerHTML">
+        Cancel
+      </button>
+    </div>
+  </div>
+</form>

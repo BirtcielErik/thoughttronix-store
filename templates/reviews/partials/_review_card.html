@@ -1,5 +1,6 @@
-{# One review, as it appears on the product page. Needs review. #}
-<article class="card bg-base-100 shadow-sm">
+{# One review, as it appears on the product page. Needs review; can_edit #}
+{# and can_delete add its actions. Edit swaps just this card for the form. #}
+<article id="review-{{ review.pk }}" class="card bg-base-100 shadow-sm">
   <div class="card-body gap-2 p-5">
     <div class="flex flex-wrap items-center gap-3">
       {% include "reviews/partials/_stars.html" with rating=review.rating %}
@@ -9,5 +10,25 @@
       </span>
     </div>
     <p class="whitespace-pre-line">{{ review.comment }}</p>
+    {% if can_edit or can_delete %}
+      <div class="card-actions justify-end">
+        {% if can_edit %}
+          <button type="button" class="btn btn-ghost btn-xs"
+                  hx-get="{% url 'reviews:edit' review.pk %}"
+                  hx-target="#review-{{ review.pk }}"
+                  hx-swap="outerHTML">
+            Edit
+          </button>
+        {% endif %}
+        {% if can_delete %}
+          <button type="button" class="btn btn-ghost btn-xs text-error"
+                  hx-post="{% url 'reviews:delete' review.pk %}"
+                  hx-target="#your-review"
+                  hx-confirm="Are you sure? This deletes your review.">
+            Delete
+          </button>
+        {% endif %}
+      </div>
+    {% endif %}
   </div>
 </article>

@@ -1,33 +1,10 @@
 {# The new-review form in the "Your review" slot; the response replaces the #}
-{# slot's contents. Needs product and form. The rating is DaisyUI's star #}
-{# rating: radio inputs, no JavaScript. The hidden first radio means "no #}
-{# rating yet", so no star looks chosen before the customer picks one. #}
+{# slot's contents. Needs product and form. #}
 <form hx-post="{% url 'reviews:create' product.pk %}"
       hx-target="#your-review"
       hx-disabled-elt="find button[type='submit']"
       class="flex flex-col gap-4">
-  <fieldset>
-    <legend class="label mb-1">Your rating</legend>
-    <div class="rating rating-lg">
-      <input type="radio" name="rating" value="" class="rating-hidden" aria-label="No rating"{% if not form.rating.value %} checked{% endif %} />
-      {% for value, label in form.fields.rating.choices %}
-        <input type="radio" name="rating" value="{{ value }}"
-               class="mask mask-star-2 bg-warning"
-               aria-label="{{ value }} star{{ value|pluralize }}"{% if form.rating.value|stringformat:"s" == value|stringformat:"s" %} checked{% endif %} />
-      {% endfor %}
-    </div>
-    {% for error in form.rating.errors %}
-      <p class="mt-1 text-sm text-error">{{ error }}</p>
-    {% endfor %}
-  </fieldset>
-
-  <div>
-    <label class="label mb-1" for="{{ form.comment.id_for_label }}">Your comment</label>
-    {{ form.comment }}
-    {% for error in form.comment.errors %}
-      <p class="mt-1 text-sm text-error">{{ error }}</p>
-    {% endfor %}
-  </div>
+  {% include "reviews/partials/_review_fields.html" %}
 
   <div>
     <button type="submit" class="btn btn-primary btn-sm">Post review</button>

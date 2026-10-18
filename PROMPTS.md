@@ -28,6 +28,78 @@ Each entry has this shape:
     - **Deviations:** recommendations overridden, follow-up questions asked
     - **Sideways:** failures, wrong turns, and how they were caught
 
+## 2026-10-17 — Customer reviews: implemented Phase 3 (customers edit and delete their own review), with TDD
+
+### Prompts
+
+1. "/implement @prd/reviews.md @plans/reviews.md Implement Phase 3"
+2. "Approve 1 and 2, discard 3" — accepting two of the three proposed TDD
+   behaviors and dropping the third (delete brings the form back for a
+   customer who still qualifies and refreshes the summary).
+3. "Approve" — accepting the RED test for the 404 behavior.
+4. "It implements the behavior, move on" — accepting its GREEN step.
+5. "Approve" — accepting the RED test for the cancelled-order behavior.
+6. "It implements the behavior, move on" — accepting its GREEN step and
+   moving on to the rest of the phase.
+7. "I'd like to make the delete confirmation pop-up match the rest of our
+   styling"
+8. The user turned down Claude's multiple-choice question (CSS-only DaisyUI
+   modal vs. `hx-confirm` plus a small JavaScript listener), saying they
+   wanted to clarify first.
+9. "Leave things as they are for now - this can remain out of scope for
+   this feature"
+10. "Manual checks pass"
+
+### Summary
+
+- **Outcome:** Phase 3 was built, committed, and pushed.
+  - **TDD behaviors (two of three approved):**
+    1. Another customer's review is a 404 for edit (GET and POST), cancel,
+       and delete, and keeps its rating and comment.
+    2. An owner whose only order was cancelled gets a 403 from edit (GET
+       and POST) and nothing changes, but can still delete, after which
+       the slot shows the non-buyer message.
+  - **Views:** `OwnReviewMixin` fetches the review through
+    `request.user.reviews`, never by bare pk. `EditReviewView` adds the
+    `may_edit` check on top and returns the edit form (GET), or the
+    updated card plus an out-of-band summary (POST), or the form with its
+    errors. `CancelEditReviewView` returns the card. `DeleteReviewView`
+    refills the slot with the form or the non-buyer message (via
+    `can_create`) and refreshes the summary out-of-band. URLs are
+    `reviews:edit`, `reviews:cancel`, and `reviews:delete`.
+  - **Templates:** the rating and comment inputs moved into
+    `_review_fields.html`, shared by the new-review form and the new
+    `_review_edit_form.html`. The card gained `id="review-<pk>"` and
+    optional Edit/Delete actions (`can_edit`, `can_delete`), and Edit
+    swaps only that card. `_review_saved.html` is the save response: the
+    card plus the summary out-of-band. The tag passes `own_can_edit`, so
+    an owner who no longer qualifies sees Delete but no Edit.
+  - **Tests:** 23 new tests (79 in `reviews/tests.py`). Final state: full
+    suite green at 493 tests, ruff check and format clean.
+- **Deviations:**
+  - The user discarded TDD behavior 3. Its ground was still covered by
+    normal tests after the TDD part.
+  - The user asked to style the delete confirmation. Claude explained
+    that `hx-confirm` uses the browser's native `confirm()`, which can't
+    be styled, and offered two ways to replace it. Each breaks a written
+    rule: one drops `hx-confirm`, which the PRD names; the other adds
+    JavaScript, which FRONTEND.md forbids. After clarifying, the user kept
+    the native confirm and left styling out of scope for this feature. No
+    files or docs were changed for it.
+- **Sideways:**
+  - To get an honest RED, Claude built the 404 behavior first, with
+    scaffold views that looked reviews up by bare pk and had no
+    `may_edit` check. The delete half of the cancelled-order test was
+    already green from that scaffold (the slot's non-buyer branch came
+    from Phase 1); only its edit half was RED. Claude said so at the
+    GREEN step.
+  - Claude used Write rather than Edit to replace two existing templates,
+    `_review_form.html` and `_review_card.html`, in full. The saved memory
+    allows Write, but those diffs were harder to review. Every later
+    change to an existing file went through Edit.
+  - Claude did not click through the feature in a browser itself. The
+    user ran the walkthrough and reported that the checks pass.
+
 ## 2026-10-17 — Customer reviews: implemented Phase 2 (write a review, catalog stars, demo reviews), with TDD
 
 ### Prompts

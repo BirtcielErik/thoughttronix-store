@@ -1,7 +1,8 @@
 {# The "Your review" slot's contents: one stable target for every customer #}
-{# action. Never rendered for staff. Needs product, user, own_review, and #}
-{# can_create (with form when it's true); HTMX responses add summary and #}
-{# oob_summary to refresh the summary out-of-band. #}
+{# action. Never rendered for staff. Needs product, user, own_review (with #}
+{# own_can_edit when there is one), and can_create (with form when it's #}
+{# true); HTMX responses add summary and oob_summary to refresh the #}
+{# summary out-of-band. The owner can always delete. #}
 <h3 class="mb-3 text-sm font-semibold uppercase tracking-wide text-primary">Your review</h3>
 {% if not user.is_authenticated %}
   <a href="{% url 'accounts:login' %}?next={{ product.get_absolute_url|urlencode }}"
@@ -9,7 +10,7 @@
     Sign in to review
   </a>
 {% elif own_review %}
-  {% include "reviews/partials/_review_card.html" with review=own_review %}
+  {% include "reviews/partials/_review_card.html" with review=own_review can_edit=own_can_edit can_delete=True %}
 {% elif can_create %}
   {% include "reviews/partials/_review_form.html" %}
 {% else %}
