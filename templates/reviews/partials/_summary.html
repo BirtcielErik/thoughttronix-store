@@ -1,5 +1,6 @@
 {# The average and count at the top of a product's reviews. Needs summary. #}
-<div id="review-summary" class="flex flex-wrap items-center gap-3">
+{# Include with oob=True to swap it out-of-band from an HTMX response. #}
+<div id="review-summary" {% if oob %}hx-swap-oob="true" {% endif %}class="flex flex-wrap items-center gap-3">
   {% if summary.count %}
     {% include "reviews/partials/_stars.html" with rating=summary.stars %}
     <span class="text-lg font-semibold">{{ summary.average|floatformat:1 }}</span>

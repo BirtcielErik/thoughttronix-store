@@ -29,6 +29,12 @@ A server-rendered Django 6 storefront and back office. The PRD (`prd/core-platfo
 - `wishlist/` — `Wishlist` (one per user, created lazily like the cart) and
   `WishlistItem`, the product-page wishlist button (an inclusion tag), and
   the private wishlist page. Only `dashboard.queries` and `seed` import it.
+- `reviews/` — `Review` (one per customer per product, verified buyers
+  only; its rules live on `Review.objects`), the product page's reviews
+  section (an inclusion tag), and the review views. It depends on
+  `products`, `orders`, and `accounts`, never the reverse: the catalog's
+  stars annotate through the `reviews` relation by name, and only `seed`
+  imports it.
 - `dashboard/` — the staff analytics dashboard
 - `PROMPTS.md` — the AI-usage log; append entries, never rewrite history
 - `templates/` — project-level templates (`base.html`); app templates live in

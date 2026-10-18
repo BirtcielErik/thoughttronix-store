@@ -1,6 +1,7 @@
 {# The "Your review" slot's contents: one stable target for every customer #}
 {# action. Never rendered for staff. Needs product, user, own_review, and #}
-{# can_create. #}
+{# can_create (with form when it's true); HTMX responses add summary and #}
+{# oob_summary to refresh the summary out-of-band. #}
 <h3 class="mb-3 text-sm font-semibold uppercase tracking-wide text-primary">Your review</h3>
 {% if not user.is_authenticated %}
   <a href="{% url 'accounts:login' %}?next={{ product.get_absolute_url|urlencode }}"
@@ -10,7 +11,8 @@
 {% elif own_review %}
   {% include "reviews/partials/_review_card.html" with review=own_review %}
 {% elif can_create %}
-  {# Phase 2: the review form. #}
+  {% include "reviews/partials/_review_form.html" %}
 {% else %}
   <p class="opacity-70">Only customers who bought this product can review it.</p>
 {% endif %}
+{% if oob_summary %}{% include "reviews/partials/_summary.html" with oob=True %}{% endif %}

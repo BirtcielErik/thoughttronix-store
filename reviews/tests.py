@@ -1,3 +1,4 @@
+import re
 from datetime import timedelta
 from decimal import Decimal
 
@@ -10,7 +11,7 @@ from django.utils import timezone
 
 from orders.models import Order
 
-from .models import Review
+from .models import Review, ReviewQuerySet
 
 
 def buy(user, product, status=Order.Status.PLACED):
@@ -244,12 +245,15 @@ def test_your_review_slot_by_viewer(
     assert "My hub hears everything." not in listing
 
 
-def test_eligible_customer_sees_neither_message_nor_review(client, customer, product):
+def test_eligible_customer_sees_the_form(client, customer, product):
     buy(customer, product)
     client.force_login(customer)
 
     slot, _ = reviews_parts(client, product)
 
+    assert f'hx-post="{reverse("reviews:create", args=[product.pk])}"' in slot
+    assert 'name="rating"' in slot
+    assert 'name="comment"' in slot
     assert "Only customers who bought" not in slot
     assert "Sign in to review" not in slot
 
@@ -346,3 +350,175 @@ def test_review_stays_up_after_its_order_is_cancelled(client, customer, product)
     client.force_login(customer)
     slot, _ = reviews_parts(client, product)
     assert "Kept my word." in slot
+
+
+# --- Writing a review ---------------------------------------------------------
+
+
+def post_review(client, product, **data):
+    return client.post(reverse("reviews:create", args=[product.pk]), data)
+
+
+def test_valid_review_returns_the_slot_and_an_oob_summary(
+    client, customer, product, nova_review
+):
+    buy(customer, product)
+    client.force_login(customer)
+
+    response = post_review(client, product, rating=2, comment="Too attentive.")
+
+    assert Review.objects.filter(
+        author=customer, product=product, rating=2, comment="Too attentive."
+    ).exists()
+    page = response.content.decode()
+    # The slot now shows the review, not the form...
+    assert "Too attentive." in page
+    assert 'name="comment"' not in page
+    # ...and the summary swaps out-of-band with Nova's 5 and this 2.
+    assert re.search(r'<div id="review-summary"[^>]*hx-swap-oob="true"', page)
+    assert "3.5" in page
+    assert "(2 reviews)" in page
+
+
+@pytest.mark.parametrize("viewer", ["non-buyer", "reviewer", "staff"])
+def test_ineligible_reviewers_are_refused(
+    client, customer, staff_user, product, viewer
+):
+    user = staff_user if viewer == "staff" else customer
+    if viewer != "non-buyer":
+        buy(user, product)
+    if viewer == "reviewer":
+        Review.objects.create(
+            author=user, product=product, rating=4, comment="Said my piece."
+        )
+    client.force_login(user)
+
+    response = post_review(client, product, rating=1, comment="Again!")
+
+    assert response.status_code == 403
+    assert not Review.objects.filter(comment="Again!").exists()
+
+
+@pytest.mark.parametrize(
+    ("data", "error"),
+    [
+        ({"comment": "Fine."}, "Choose a star rating."),
+        ({"rating": "", "comment": "Fine."}, "Choose a star rating."),
+        ({"rating": 6, "comment": "Fine."}, "Select a valid choice."),
+        ({"rating": 0, "comment": "Fine."}, "Select a valid choice."),
+        ({"rating": 4}, "Write a comment."),
+        ({"rating": 4, "comment": "   \n "}, "Write a comment."),
+        ({"rating": 4, "comment": "x" * 2001}, "at most 2000 characters"),
+    ],
+)
+def test_invalid_review_re_renders_the_form_with_its_error(
+    client, customer, product, data, error
+):
+    buy(customer, product)
+    client.force_login(customer)
+
+    response = post_review(client, product, **data)
+
+    assert response.status_code == 200
+    page = response.content.decode()
+    assert 'name="comment"' in page
+    assert error in page
+    # Nothing changed, so the summary isn't refreshed.
+    assert "hx-swap-oob" not in page
+    assert not Review.objects.exists()
+
+
+def test_invalid_review_keeps_what_was_entered(client, customer, product):
+    buy(customer, product)
+    client.force_login(customer)
+
+    page = post_review(client, product, rating=4, comment="").content.decode()
+
+    assert re.search(r'value="4"[^>]*checked', page)
+
+
+def test_a_comment_of_exactly_2000_characters_is_accepted(client, customer, product):
+    buy(customer, product)
+    client.force_login(customer)
+
+    post_review(client, product, rating=4, comment="x" * 2000)
+
+    assert Review.objects.filter(author=customer).exists()
+
+
+def test_an_unavailable_product_can_be_reviewed_from_its_page(
+    client, customer, unavailable_product
+):
+    buy(customer, unavailable_product, Order.Status.DELIVERED)
+    client.force_login(customer)
+
+    response = post_review(client, unavailable_product, rating=3, comment="Gone.")
+
+    assert response.status_code == 200
+    assert Review.objects.filter(product=unavailable_product).exists()
+
+
+def test_create_redirects_anonymous_visitors_to_sign_in(client, product):
+    response = post_review(client, product, rating=5, comment="Hi.")
+
+    assert response.status_code == 302
+    assert response.url.startswith(reverse("accounts:login"))
+    assert not Review.objects.exists()
+
+
+def test_create_refuses_get(client, customer, product):
+    buy(customer, product)
+    client.force_login(customer)
+
+    response = client.get(reverse("reviews:create", args=[product.pk]))
+
+    assert response.status_code == 405
+
+
+def test_create_of_an_unknown_product_is_a_404(client, customer):
+    client.force_login(customer)
+
+    response = client.post(reverse("reviews:create", args=[999]), {"rating": 5})
+
+    assert response.status_code == 404
+
+
+def test_a_double_submit_is_refused_not_an_error(
+    client, customer, product, monkeypatch
+):
+    # The second of two racing requests: it passed can_create before the
+    # first one saved.
+    buy(customer, product)
+    Review.objects.create(author=customer, product=product, rating=5, comment="1st")
+    monkeypatch.setattr(ReviewQuerySet, "can_create", lambda self, user, p: True)
+    client.force_login(customer)
+
+    response = post_review(client, product, rating=5, comment="2nd")
+
+    assert response.status_code == 403
+    assert Review.objects.count() == 1
+
+
+# --- Stars in the catalog -----------------------------------------------------
+
+
+@pytest.mark.parametrize("listing", ["catalog", "category"])
+def test_catalog_cards_show_average_and_count(
+    client, customer, product, nova_review, listing
+):
+    Review.objects.create(author=customer, product=product, rating=2, comment="Meh.")
+    product.category.products.create(name="Cortex Cuff", slug="cortex-cuff", price=1)
+    if listing == "catalog":
+        url = reverse("products:catalog")
+    else:
+        url = product.category.get_absolute_url()
+
+    page = client.get(url).content.decode()
+
+    # Seraphine's card: Nova's 5 and this 2.
+    assert 'aria-label="4 out of 5 stars"' in page
+    assert "3.5" in page
+    assert "(2 reviews)" in page
+    # The Cortex Cuff is listed, but with no reviews it shows no stars.
+    assert "Cortex Cuff" in page
+    assert page.count("out of 5 stars") == 1

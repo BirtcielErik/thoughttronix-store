@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% load cart_extras humanize %}
+{% load cart_extras humanize reviews_extras %}
 
 {% block title %}
   {% if category %}{{ category.name }}{% else %}Catalog{% endif %} — The ThoughtTronix Store
@@ -79,6 +79,13 @@
               <span class="badge badge-warning badge-outline">Unavailable</span>
             {% endif %}
           </div>
+          {% if product.review_count %}
+            <div class="flex flex-wrap items-center gap-2 text-sm">
+              {% include "reviews/partials/_stars.html" with rating=product.average_rating|whole_stars %}
+              <span class="font-semibold">{{ product.average_rating|floatformat:1 }}</span>
+              <span class="opacity-70">({{ product.review_count }} review{{ product.review_count|pluralize }})</span>
+            </div>
+          {% endif %}
           {% if product.tagline %}
             <p class="text-sm italic opacity-70">{{ product.tagline }}</p>
           {% endif %}

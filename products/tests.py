@@ -9,6 +9,7 @@ from django.urls import reverse
 from django.utils.html import escape
 
 from orders.models import CartItem, Order, OrderItem
+from reviews.models import Review
 from wishlist.models import Wishlist, WishlistItem
 
 from .models import Category, Product, Tag
@@ -249,6 +250,7 @@ def test_seed_is_idempotent(db):
         OrderItem.objects.count(),
         Wishlist.objects.count(),
         WishlistItem.objects.count(),
+        Review.objects.count(),
     )
 
     call_command("seed")
@@ -262,6 +264,46 @@ def test_seed_is_idempotent(db):
         OrderItem.objects.count(),
         Wishlist.objects.count(),
         WishlistItem.objects.count(),
+        Review.objects.count(),
     )
 
     assert first == second
+
+
+def test_seed_reviews_obey_the_review_rules(db):
+    call_command("seed")
+
+    reviews = Review.objects.select_related("author", "product")
+    assert reviews.count() >= 10
+    assert not reviews.filter(author__is_staff=True).exists()
+    pairs = set(reviews.values_list("author", "product"))
+    assert len(pairs) == reviews.count()
+    for review in reviews:
+        # Backed by a live order for its product, placed before the review.
+        assert (
+            Order.objects.filter(
+                user=review.author,
+                items__product=review.product,
+                created_at__lt=review.created_at,
+            )
+            .exclude(status=Order.Status.CANCELLED)
+            .exists()
+        )
+        assert not review.was_edited
+
+
+def test_seed_leaves_the_demo_customer_a_purchase_to_review(db):
+    call_command("seed")
+
+    customer = get_user_model().objects.get(username="customer")
+    assert customer.reviews.exists()
+    purchased = Product.objects.filter(orderitem__order__user=customer).distinct()
+    assert any(Review.objects.can_create(customer, product) for product in purchased)
+
+
+def test_seed_reviews_reach_the_catalog(client, db):
+    call_command("seed")
+
+    page = client.get(reverse("products:catalog")).content.decode()
+
+    assert "out of 5 stars" in page

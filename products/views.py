@@ -1,6 +1,6 @@
 from django.contrib import messages
 from django.contrib.messages.views import SuccessMessageMixin
-from django.db.models import Count, ProtectedError
+from django.db.models import Avg, Count, ProtectedError
 from django.shortcuts import get_object_or_404, redirect
 from django.urls import reverse_lazy
 from django.views.generic import (
@@ -22,7 +22,9 @@ class CatalogView(ListView):
     """The public product catalog: search, tag and category filters, pagination.
 
     Filters arrive as querystring parameters (``q``, ``tag``, ``category``)
-    and compose freely.
+    and compose freely. Each product carries its ``average_rating`` and
+    ``review_count`` for the card's stars, annotated through the ``reviews``
+    reverse relation so there is no query per card.
     """
 
     template_name = "products/catalog.html"
@@ -30,7 +32,15 @@ class CatalogView(ListView):
     paginate_by = 12
 
     def get_queryset(self):
-        products = Product.objects.select_related("category").prefetch_related("tags")
+        products = (
+            Product.objects.select_related("category")
+            .prefetch_related("tags")
+            .annotate(
+                average_rating=Avg("reviews__rating"), review_count=Count("reviews")
+            )
+            # An aggregate's GROUP BY drops Meta.ordering, so restate it.
+            .order_by("name")
+        )
         query = self.request.GET.get("q", "").strip()
         if query:
             products = products.search(query)

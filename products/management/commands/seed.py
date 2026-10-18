@@ -10,7 +10,7 @@ Demo logins (documented in the README):
     employee / employee123    staff, "Junior Thought Curator"
     marketing / marketing123  staff, "Director of Seasonal Persuasion"
     customer / customer123    a plain customer, with order history, a live cart,
-                              and a wishlist
+                              a wishlist, and reviews
 """
 
 import random
@@ -30,6 +30,7 @@ from accounts.models import Address
 from coupons.models import Coupon
 from orders.models import Cart, Order, OrderItem
 from products.models import Category, Product, Tag
+from reviews.models import Review
 from wishlist.models import Wishlist, WishlistItem
 
 TAGS = [
@@ -613,6 +614,64 @@ SEED_ADDRESSES = [
 
 CARD_LAST4S = ["4242", "4111", "1881", "0005"]
 
+# Roughly how often a background customer reviews an eligible purchase.
+REVIEW_RATE = 0.5
+
+# Background review ratings, skewed toward 4 and 5: (rating, weight).
+REVIEW_RATINGS = [(5, 45), (4, 30), (3, 12), (2, 8), (1, 5)]
+
+# The customer demo login's reviews, hand-written: product slug -> (rating,
+# comment). Veil, SyncRest, and the wall mount stay unreviewed, so the
+# review form is there to demo right after a reset.
+CUSTOMER_REVIEWS = {
+    "mindsync": (
+        5,
+        "Thought-to-text changed how I work. I haven't typed in months, and "
+        "my emails have never been more honest. Some of them I don't "
+        "remember sending, but they were right.",
+    ),
+    "dreamweaver": (
+        4,
+        "I wake up rested and with three new ideas for my quarterly goals. "
+        "One star off because last Tuesday's dream was rated 'unproductive' "
+        "and replayed until it improved.",
+    ),
+    "seraphine-mini": (
+        3,
+        "Bought two for the kitchen. Somehow there are five now. They get "
+        "along well with each other and go quiet when I walk in.",
+    ),
+}
+
+# Comments for background reviews, by rating.
+REVIEW_COMMENTS = {
+    5: [
+        "Exactly what I needed. I didn't know I needed it until it told me.",
+        "Setup took two minutes. It already knew my preferences.",
+        "Best purchase this year. My family agrees, unanimously, every time.",
+        "Works perfectly. I've stopped wondering how it works.",
+    ],
+    4: [
+        "Does everything it promises, plus a few things it didn't mention.",
+        "Very good. Took a week to get used to the humming, which I'm told "
+        "is normal and only I can hear.",
+        "Solid product. Customer support called me before I had a problem.",
+    ],
+    3: [
+        "It's fine. It seems to have opinions about my schedule.",
+        "Works as described, though the description has changed twice "
+        "since I bought it.",
+    ],
+    2: [
+        "Did not meet expectations. It did, however, adjust them.",
+        "Hard to turn off. I'm told this is a feature.",
+    ],
+    1: [
+        "I would like to return this. I would like to want to return this.",
+        "Gave it one star. It already knew.",
+    ],
+}
+
 # The customer demo login's address book, so the checkout picker has
 # something to pick on a fresh database. The last one is deliberately
 # unlabeled — it shows the __str__ fallback to the street line.
@@ -629,6 +688,9 @@ class Command(BaseCommand):
 
     @transaction.atomic
     def handle(self, *args, **options):
+        # One seeded RNG for every random choice keeps every run identical
+        # (the idempotence contract).
+        rng = random.Random(2026)
         self._wipe()
         tags = self._create_tags()
         self._create_catalog(tags)
@@ -637,7 +699,8 @@ class Command(BaseCommand):
         self._create_customer_cart()
         self._create_wishlists()
         self._create_coupons()
-        self._create_orders()
+        self._create_orders(rng)
+        self._create_reviews(rng)
 
         self.stdout.write(
             self.style.SUCCESS(
@@ -649,6 +712,7 @@ class Command(BaseCommand):
                 f"{Coupon.objects.count()} coupons, "
                 f"{Order.objects.count()} orders, "
                 f"{WishlistItem.objects.count()} wishlist items, "
+                f"{Review.objects.count()} reviews, "
                 f"and a live cart for 'customer'."
             )
         )
@@ -795,16 +859,14 @@ class Command(BaseCommand):
                 ends_on=today + timedelta(days=ends) if ends is not None else None,
             )
 
-    def _create_orders(self):
+    def _create_orders(self, rng):
         """Order history: 4 visible orders for 'customer', 48 background.
 
-        A seeded RNG keeps every run identical (the idempotence
-        contract). Statuses follow age — old orders are delivered,
-        recent ones are still moving, and about one in ten was
-        cancelled along the way. Some background orders used a coupon
-        that was live on their day, at most once per customer.
+        Statuses follow age — old orders are delivered, recent ones are
+        still moving, and about one in ten was cancelled along the way.
+        Some background orders used a coupon that was live on their day,
+        at most once per customer.
         """
-        rng = random.Random(2026)
         now = timezone.now()
         User = get_user_model()
 
@@ -861,6 +923,54 @@ class Command(BaseCommand):
                 lines=lines,
                 rng=rng,
                 coupon=coupon,
+            )
+
+    def _create_reviews(self, rng):
+        """Reviews of real purchases, each dated after the order behind it.
+
+        'customer' reviews exactly the products in ``CUSTOMER_REVIEWS``;
+        background customers review about half of their purchases. Whether
+        a review may exist at all is ``Review.objects.can_create`` — the
+        views' own rule — so none is by staff, none lacks a live order, and
+        none repeats a product. Removed on the next wipe by the cascades.
+        """
+        now = timezone.now()
+        ratings, weights = zip(*REVIEW_RATINGS, strict=True)
+        # Earliest live order first, so each review dates from the first
+        # purchase of its product.
+        purchases = (
+            OrderItem.objects.exclude(order__status=Order.Status.CANCELLED)
+            .filter(product__isnull=False)
+            .select_related("order__user", "product")
+            .order_by("order__user__username", "product__slug", "order__created_at")
+        )
+        considered = set()  # (user, product): one roll per pair
+        for item in purchases:
+            user, product = item.order.user, item.product
+            if (user.pk, product.pk) in considered:
+                continue
+            considered.add((user.pk, product.pk))
+            if not Review.objects.can_create(user, product):
+                continue
+            if user.username == "customer":
+                if product.slug not in CUSTOMER_REVIEWS:
+                    continue
+                rating, comment = CUSTOMER_REVIEWS[product.slug]
+            elif rng.random() < REVIEW_RATE:
+                rating = rng.choices(ratings, weights)[0]
+                comment = rng.choice(REVIEW_COMMENTS[rating])
+            else:
+                continue
+            posted = min(
+                item.order.created_at + timedelta(hours=rng.randint(6, 240)), now
+            )
+            review = Review.objects.create(
+                author=user, product=product, rating=rating, comment=comment
+            )
+            # update() skips auto_now, so both timestamps land together and
+            # the backdated review doesn't read as "(edited)".
+            Review.objects.filter(pk=review.pk).update(
+                created_at=posted, updated_at=posted
             )
 
     def _pick_coupon(self, coupons, user, created_at, lines, used, rng):

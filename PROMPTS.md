@@ -28,6 +28,90 @@ Each entry has this shape:
     - **Deviations:** recommendations overridden, follow-up questions asked
     - **Sideways:** failures, wrong turns, and how they were caught
 
+## 2026-10-17 — Customer reviews: implemented Phase 2 (write a review, catalog stars, demo reviews), with TDD
+
+### Prompts
+
+1. "/implement @prd/reviews.md @plans/reviews.md Implement Phase 2"
+2. "Go ahead" — accepting the three proposed TDD behaviors.
+3. "Why are you trying to add code through the command line instead of
+   editing the file?" — after interrupting and rejecting a Bash heredoc
+   and `sed` call that appended the first test.
+4. "Go ahead" — accepting the RED test for behavior 1.
+5. "Go ahead" — accepting behavior 1's GREEN step.
+6. "Go ahead" — accepting the RED test for behavior 2.
+7. "Go ahead" — accepting behavior 2's GREEN step.
+8. "Go ahead" — accepting the RED test for behavior 3.
+9. "Go ahead" — accepting behavior 3's GREEN step and the plan for the
+   rest of the phase.
+10. "Manual checks pass"
+
+### Summary
+
+- **Outcome:** Phase 2 was built, committed, and pushed.
+  - **TDD behaviors (approved up front):**
+    1. A valid post to `reviews:create` saves the review and returns the
+       "Your review" slot showing it, plus the summary as an out-of-band
+       swap with the new average and count.
+    2. A non-buyer, someone who already reviewed, and staff all get a 403
+       from `reviews:create`, and nothing is created.
+    3. Catalog and category cards show the average (as stars and a number)
+       and the review count. A product with no reviews shows no stars.
+  - **Writing:** `ReviewForm` (a `TypedChoiceField` rating of 1–5 and the
+    model's 2,000-character comment, with friendlier required messages).
+    `CreateReviewView` looks the product up among all products, checks
+    `can_create` on the server, re-renders the slot with errors when the
+    form is invalid, and turns a double-submit `IntegrityError` into a
+    403. The form in `_review_form.html` uses DaisyUI's radio `rating`
+    with a hidden "no rating" first radio, and `hx-disabled-elt` disables
+    the button while the post is in flight. `_summary.html` takes
+    `oob=True`, following the cart badge.
+  - **Catalog:** `CatalogView` annotates `average_rating` and
+    `review_count` through the `reviews` relation by name. The half-up
+    rounding moved into one `whole_stars()` in `reviews/models.py`, used by
+    `summary()` and by a `whole_stars` template filter on the cards.
+  - **Seed:** `_create_reviews` reviews about half of each background
+    customer's eligible purchases, with ratings weighted toward 4 and 5
+    and comments drawn from a pool for each rating. The demo login gets
+    three hand-written reviews (MindSync, DreamWeaver, Seraphine Mini) and
+    keeps Veil, SyncRest, and the wall mount unreviewed. Eligibility is
+    `Review.objects.can_create`. Reviews are dated 6–240 hours after the
+    first live order (capped at now), and both timestamps are set by
+    `update()` so none reads as "(edited)". `handle` now creates the one
+    seeded RNG and passes it to `_create_orders` and `_create_reviews`, so
+    the order data is unchanged.
+  - **Docs:** CLAUDE.md's project layout lists `reviews/` and its one-way
+    import rule.
+  - **Tests:** 20 new review tests (56 in `reviews/tests.py`) and 3 seed
+    tests in `products/tests.py`, plus the review count added to the
+    idempotence check. Final state: full suite green at 470 tests, ruff
+    check and format clean.
+- **Deviations:**
+  - The user approved every TDD proposal without changes.
+  - The user stopped the first test being added through a Bash heredoc
+    and `sed`, a clear breach of the saved "edit files with Edit" memory.
+    Nothing was written. Claude redid it with Edit, and every later
+    change went through Edit.
+  - The PRD's "hand-written comments for the named demo customers" was
+    taken to mean the `customer` demo login only, because it is the one
+    demo customer who can sign in. Claude flagged this when handing over
+    the manual checks; the user did not comment on it.
+- **Sideways:**
+  - Behavior 1's first run failed with `DoesNotExist` from
+    `Review.objects.get`, not an assertion. Claude rewrote the check as
+    `assert ... .exists()` before showing the RED test.
+  - In behavior 2's RED run, the already-reviewed case failed with an
+    `IntegrityError` (a 500), not an assertion. Claude explained this was
+    the missing check itself rather than missing scaffolding.
+  - Behavior 3's annotation silently dropped `Product.Meta.ordering`,
+    because Django doesn't apply it to GROUP BY queries. The tests still
+    passed, and only an `UnorderedObjectListWarning` showed it. Claude
+    restored `.order_by("name")` with a comment.
+  - `ruff format --check` flagged one hand-wrapped dict in
+    `reviews/views.py`. Claude fixed it with Edit.
+  - Claude did not click through the feature in a browser itself. The
+    user ran the walkthrough and reported that the checks pass.
+
 ## 2026-10-17 — Customer reviews: implemented Phase 1 (read reviews on the product page), with TDD
 
 ### Prompts

@@ -13,6 +13,15 @@ from products.models import Product
 EDIT_TOLERANCE = timedelta(minutes=1)
 
 
+def whole_stars(average):
+    """An average rating as whole stars for display, rounded half up.
+
+    Not ``round()``, which would show 2.5 as two stars. No average (no
+    reviews) is no stars.
+    """
+    return int(average + 0.5) if average is not None else 0
+
+
 def _has_purchased(user, product):
     # "Purchased" means what it means on the dashboard: any order status
     # except cancelled. No delivery needed, and availability is irrelevant.
@@ -50,14 +59,12 @@ class ReviewQuerySet(models.QuerySet):
         """``{"average", "stars", "count"}`` for ``product``'s reviews.
 
         ``average`` is None (and ``stars`` 0) when there are none; ``stars``
-        is the average rounded half up to whole stars for display (not
-        ``round()``, which would show 2.5 as two stars).
+        is the average as whole stars for display (see ``whole_stars``).
         """
         summary = self.filter(product=product).aggregate(
             average=Avg("rating"), count=Count("pk")
         )
-        average = summary["average"]
-        summary["stars"] = int(average + 0.5) if average is not None else 0
+        summary["stars"] = whole_stars(summary["average"])
         return summary
 
 
