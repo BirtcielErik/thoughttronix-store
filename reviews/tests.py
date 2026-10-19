@@ -1123,6 +1123,32 @@ def test_backoffice_delete_removes_the_review_and_refreshes_the_count(
         r'\s*<h2 id="review-count"[^>]*hx-swap-oob="true".*', page, re.S
     )
     assert re.search(r">\s*1 review\s*<", page)
+    assert 'id="review-list"' not in page
+
+
+def test_backoffice_delete_of_the_last_review_swaps_in_the_empty_state(
+    client, staff_user, nova_review
+):
+    client.force_login(staff_user)
+
+    page = client.post(backoffice("delete", nova_review)).content.decode()
+
+    assert re.search(r">\s*0 reviews\s*<", page)
+    assert re.search(r'<div id="review-list" hx-swap-oob="true">', page)
+    assert "No reviews yet" in page
+
+
+def test_backoffice_delete_of_the_last_review_in_a_filter_swaps_in_its_empty_state(
+    client, staff_user, one_review_per_rating
+):
+    client.force_login(staff_user)
+    one_star = Review.objects.get(rating=1)
+
+    page = client.post(f"{backoffice('delete', one_star)}&rating=1").content.decode()
+
+    assert re.search(r'<div id="review-list" hx-swap-oob="true">', page)
+    assert "No 1-star reviews" in page
+    assert f'href="{reverse("reviews:manage_reviews")}"' in page
 
 
 def delete_url_in(page, review):
@@ -1149,6 +1175,69 @@ def test_backoffice_delete_recounts_within_the_rating_filter(
     response = client.post(delete_url_in(listing, nova_review))
 
     assert re.search(r">\s*1 review\s*<", response.content.decode())
+
+
+def reviews_by_age(product, count, rating=4):
+    """``count`` reviews of the product a day apart, newest first."""
+    now = timezone.now()
+    return [
+        Review.objects.create(
+            author=get_user_model().objects.create_user(
+                username=f"aged{age}", password="x"
+            ),
+            product=product,
+            rating=rating,
+            comment=f"{age} days old.",
+            created_at=now - timedelta(days=age),
+        )
+        for age in range(count)
+    ]
+
+
+def test_backoffice_delete_that_empties_a_later_page_goes_to_the_new_last_page(
+    client, staff_user, product
+):
+    *_, oldest = reviews_by_age(product, 21)
+    client.force_login(staff_user)
+    listing = client.get(
+        reverse("reviews:manage_reviews"), {"page": 2}
+    ).content.decode()
+
+    response = client.post(delete_url_in(listing, oldest))
+
+    assert not Review.objects.filter(pk=oldest.pk).exists()
+    assert response["HX-Redirect"] == reverse("reviews:manage_reviews")
+
+
+def test_backoffice_delete_that_empties_a_filtered_page_keeps_the_filter(
+    client, staff_user, product, one_review_per_rating
+):
+    # 41 five-star reviews fill pages 1-2 of the filter and one on page 3.
+    *_, oldest = reviews_by_age(product, 40, rating=5)
+    client.force_login(staff_user)
+    listing = client.get(
+        reverse("reviews:manage_reviews"), {"rating": "5", "page": 3}
+    ).content.decode()
+
+    response = client.post(delete_url_in(listing, oldest))
+
+    url = reverse("reviews:manage_reviews")
+    assert response["HX-Redirect"] == f"{url}?rating=5&page=2"
+
+
+def test_backoffice_delete_that_leaves_rows_on_the_page_stays_put(
+    client, staff_user, product
+):
+    *_, oldest = reviews_by_age(product, 22)
+    client.force_login(staff_user)
+    listing = client.get(
+        reverse("reviews:manage_reviews"), {"page": 2}
+    ).content.decode()
+
+    response = client.post(delete_url_in(listing, oldest))
+
+    assert "HX-Redirect" not in response
+    assert re.search(r">\s*21 reviews\s*<", response.content.decode())
 
 
 def test_customers_cannot_use_the_backoffice_surface(client, customer, product):

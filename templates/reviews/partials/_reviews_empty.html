@@ -1,0 +1,16 @@
+{# The Reviews tab's designed empty state, for all reviews or within the #}
+{# ?rating= filter. Needs active_rating. #}
+<div class="py-16 text-center">
+  {% if active_rating %}
+    <p class="text-5xl">🔭</p>
+    <p class="mt-4 text-xl font-semibold">No {{ active_rating }}-star reviews</p>
+    <p class="mt-2 opacity-70">Nobody feels quite that way. Yet.</p>
+    <a href="{% url 'reviews:manage_reviews' %}" class="btn btn-primary btn-sm mt-6">
+      Show all reviews
+    </a>
+  {% else %}
+    <p class="text-5xl">💭</p>
+    <p class="mt-4 text-xl font-semibold">No reviews yet</p>
+    <p class="mt-2 opacity-70">The customers are keeping their thoughts to themselves. For now.</p>
+  {% endif %}
+</div>

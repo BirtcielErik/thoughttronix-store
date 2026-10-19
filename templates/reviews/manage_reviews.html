@@ -20,6 +20,9 @@
     </div>
   </div>
 
+  {# A delete that leaves the filter matching nothing swaps the empty state #}
+  {# in for this whole list, out-of-band. #}
+  <div id="review-list">
   {% if reviews %}
     <div class="overflow-x-auto rounded-box bg-base-100 shadow-md">
       <table class="table">
@@ -61,19 +64,7 @@
       </div>
     {% endif %}
   {% else %}
-    <div class="py-16 text-center">
-      {% if active_rating %}
-        <p class="text-5xl">🔭</p>
-        <p class="mt-4 text-xl font-semibold">No {{ active_rating }}-star reviews</p>
-        <p class="mt-2 opacity-70">Nobody feels quite that way. Yet.</p>
-        <a href="{% querystring rating=None page=None %}" class="btn btn-primary btn-sm mt-6">
-          Show all reviews
-        </a>
-      {% else %}
-        <p class="text-5xl">💭</p>
-        <p class="mt-4 text-xl font-semibold">No reviews yet</p>
-        <p class="mt-2 opacity-70">The customers are keeping their thoughts to themselves. For now.</p>
-      {% endif %}
-    </div>
+    {% include "reviews/partials/_reviews_empty.html" %}
   {% endif %}
+  </div>
 {% endblock %}

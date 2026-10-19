@@ -4,7 +4,7 @@
 <tr id="review-{{ review.pk }}">
   {% include "reviews/partials/_review_row_cells.html" %}
   <td colspan="3" class="align-top">
-    <form hx-post="{% url 'reviews:edit' review.pk %}{% querystring surface='backoffice' page=None %}"
+    <form hx-post="{% url 'reviews:edit' review.pk %}{% querystring surface='backoffice' %}"
           hx-target="#review-{{ review.pk }}"
           hx-swap="outerHTML"
           hx-disabled-elt="find button[type='submit']"
@@ -13,7 +13,7 @@
       <div class="flex gap-2">
         <button type="submit" class="btn btn-primary btn-sm">Save</button>
         <button type="button" class="btn btn-ghost btn-sm"
-                hx-get="{% url 'reviews:cancel' review.pk %}{% querystring surface='backoffice' page=None %}"
+                hx-get="{% url 'reviews:cancel' review.pk %}{% querystring surface='backoffice' %}"
                 hx-target="#review-{{ review.pk }}"
                 hx-swap="outerHTML">
           Cancel

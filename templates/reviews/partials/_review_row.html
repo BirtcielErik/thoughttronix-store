@@ -1,7 +1,8 @@
 {# One review as a back-office row. Needs review. Its actions carry #}
 {# ?surface=backoffice, so the review views answer with rows, not cards: #}
 {# Edit swaps this row for the inline form, and Delete removes it. They #}
-{# also keep the page's ?rating=, so a delete recounts within the filter. #}
+{# also keep the page's ?rating= and ?page=, so a delete recounts within #}
+{# the filter and knows when it has emptied the page. #}
 <tr id="review-{{ review.pk }}">
   {% include "reviews/partials/_review_row_cells.html" %}
   <td class="max-w-md align-top">
@@ -13,13 +14,13 @@
   <td class="align-top">
     <div class="flex justify-end gap-1">
       <button type="button" class="btn btn-ghost btn-xs"
-              hx-get="{% url 'reviews:edit' review.pk %}{% querystring surface='backoffice' page=None %}"
+              hx-get="{% url 'reviews:edit' review.pk %}{% querystring surface='backoffice' %}"
               hx-target="#review-{{ review.pk }}"
               hx-swap="outerHTML">
         Edit
       </button>
       <button type="button" class="btn btn-ghost btn-xs text-error"
-              hx-post="{% url 'reviews:delete' review.pk %}{% querystring surface='backoffice' page=None %}"
+              hx-post="{% url 'reviews:delete' review.pk %}{% querystring surface='backoffice' %}"
               hx-target="#review-{{ review.pk }}"
               hx-swap="outerHTML"
               hx-confirm="Are you sure? This deletes {{ review.author.public_name }}'s review.">

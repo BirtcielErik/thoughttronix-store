@@ -9,8 +9,12 @@ back-office Reviews tab's rows call the same views with
 
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.core.exceptions import PermissionDenied
+from django.core.paginator import Paginator
 from django.db import IntegrityError, transaction
+from django.http import HttpResponse
 from django.shortcuts import get_object_or_404, render
+from django.urls import reverse
+from django.utils.http import urlencode
 from django.views import View
 from django.views.generic import ListView
 
@@ -189,7 +193,10 @@ class DeleteReviewView(ReviewLookupMixin, View):
     message if not. A staff delete sends back nothing in place of the card,
     so it disappears from the list. Both refresh the summary out-of-band.
     In the back office the row disappears the same way, and the heading's
-    count (within the page's ``?rating=`` filter) refreshes out-of-band.
+    count (within the page's ``?rating=`` filter) refreshes out-of-band —
+    along with the empty state, once that count reaches zero. A delete that
+    empties a later page while reviews remain sends the browser to the new
+    last page instead.
     """
 
     def post(self, request, pk):
@@ -197,10 +204,18 @@ class DeleteReviewView(ReviewLookupMixin, View):
         product = review.product
         review.delete()
         if self.in_backoffice():
+            rating = rating_filter(request)
+            paginator = Paginator(backoffice_reviews(request), REVIEWS_PER_PAGE)
+            if paginator.count and page_number(request) > paginator.num_pages:
+                response = HttpResponse()
+                response["HX-Redirect"] = manage_reviews_url(
+                    rating, paginator.num_pages
+                )
+                return response
             return render(
                 request,
-                "reviews/partials/_review_count.html",
-                {"count": backoffice_reviews(request).count(), "oob": True},
+                "reviews/partials/_review_deleted.html",
+                {"count": paginator.count, "active_rating": rating},
             )
         if request.user.is_staff:
             return render(
@@ -227,17 +242,35 @@ class DeleteReviewView(ReviewLookupMixin, View):
 #
 # Staff-only moderation: every review on the site, filterable by rating.
 # Its rows edit and delete through the views above, which answer with rows
-# instead of cards; the rows' URLs keep the page's ``?rating=``, so a delete
-# can recount within the filter. The ``section`` context entry drives the
-# active tab.
+# instead of cards; the rows' URLs keep the page's ``?rating=`` and
+# ``?page=``, so a delete can recount within the filter and notice when it
+# has emptied the page. The ``section`` context entry drives the active tab.
 
 RATINGS = [str(stars) for stars, _ in RATING_CHOICES]
+REVIEWS_PER_PAGE = 20
 
 
 def rating_filter(request):
     """The ``?rating=`` filter, or "" when it isn't one of the five stars."""
     rating = request.GET.get("rating", "")
     return rating if rating in RATINGS else ""
+
+
+def page_number(request):
+    """The ``?page=`` number, or 1 when it isn't a number."""
+    try:
+        return int(request.GET.get("page", 1))
+    except ValueError:
+        return 1
+
+
+def manage_reviews_url(rating, page):
+    """The Reviews tab's URL at a page within a rating filter."""
+    params = {"rating": rating} if rating else {}
+    if page > 1:
+        params["page"] = page
+    url = reverse("reviews:manage_reviews")
+    return f"{url}?{urlencode(params)}" if params else url
 
 
 def backoffice_reviews(request):
@@ -253,7 +286,7 @@ class ManageReviewListView(StaffRequiredMixin, ListView):
 
     template_name = "reviews/manage_reviews.html"
     context_object_name = "reviews"
-    paginate_by = 20
+    paginate_by = REVIEWS_PER_PAGE
     extra_context = {"section": "reviews", "ratings": RATINGS}
 
     def get_queryset(self):

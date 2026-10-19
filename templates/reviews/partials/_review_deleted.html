@@ -1,0 +1,9 @@
+{# A back-office delete: nothing in place of the row, the heading's count #}
+{# refreshed out-of-band, and — once the filter matches nothing — the #}
+{# empty state swapped in for the list. Needs count and active_rating. #}
+{% include "reviews/partials/_review_count.html" with oob=True %}
+{% if not count %}
+  <div id="review-list" hx-swap-oob="true">
+    {% include "reviews/partials/_reviews_empty.html" %}
+  </div>
+{% endif %}
